@@ -32,41 +32,33 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: ["sh", "-c"]
-          args: ["echo 'MCP Server for Karma deployed - tools available for Claude integration' && python -c 'import sys; sys.path.append(\"/app/src\"); from karma_mcp.server import check_karma; import asyncio; print(asyncio.run(check_karma())); import time; time.sleep(3600)'"]
           env:
             - name: KARMA_URL
               value: {{ .Values.config.karmaUrl | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8080"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
           {{- if .Values.healthCheck.enabled }}
           livenessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - |
-                  import sys; sys.path.append('/app/src')
-                  from karma_mcp.server import check_karma
-                  import asyncio
-                  result = asyncio.run(check_karma())
-                  sys.exit(0 if result.get('status') == 'ok' else 1)
+            httpGet:
+              path: /health
+              port: http
             initialDelaySeconds: {{ .Values.healthCheck.initialDelaySeconds }}
             periodSeconds: {{ .Values.healthCheck.periodSeconds }}
             timeoutSeconds: {{ .Values.healthCheck.timeoutSeconds }}
             successThreshold: {{ .Values.healthCheck.successThreshold }}
             failureThreshold: {{ .Values.healthCheck.failureThreshold }}
           readinessProbe:
-            exec:
-              command:
-                - python
-                - -c
-                - |
-                  import sys; sys.path.append('/app/src')
-                  from karma_mcp.server import check_karma
-                  import asyncio
-                  result = asyncio.run(check_karma())
-                  sys.exit(0 if result.get('status') == 'ok' else 1)
+            httpGet:
+              path: /health
+              port: http
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: {{ .Values.healthCheck.timeoutSeconds }}

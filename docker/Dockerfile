@@ -23,6 +23,7 @@ RUN groupadd -r karma && useradd -r -g karma karma
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -49,10 +50,10 @@ ENV KARMA_URL=""
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; sys.path.append('/app/src'); from karma_mcp.server import check_karma; import asyncio; exit(0 if 'running' in asyncio.run(check_karma()).lower() else 1)" || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
-# Expose port (if needed for HTTP mode)
+# Expose port for HTTP server
 EXPOSE 8080
 
-# Default command - run MCP server
-CMD ["python", "-m", "karma_mcp.server"]
+# Default command - run HTTP server (use MCP_MODE=stdio for stdio mode)
+CMD ["python", "-m", "karma_mcp.http_server"]

@@ -12,13 +12,13 @@ echo "🐳 Building Karma MCP Server Docker image..."
 echo "   Image: ${IMAGE_NAME}:${VERSION}"
 echo ""
 
-# Build the image from parent directory
+# Build the image from current directory (should be project root)
 docker build \
   -f docker/Dockerfile \
   -t "${IMAGE_NAME}:${VERSION}" \
   -t "${IMAGE_NAME}:latest" \
   ${BUILD_ARGS} \
-  ..
+  .
 
 echo ""
 echo "✅ Build completed successfully!"
