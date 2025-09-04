@@ -1,0 +1,18 @@
+apiVersion: v2
+name: karma-mcp
+description: Helm chart for Karma MCP Server - Model Context Protocol integration with Karma Alert Dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - karma
+  - mcp
+  - alerts
+  - monitoring
+  - claude
+home: https://github.com/driosalido/mcp-karma
+sources:
+  - https://github.com/driosalido/mcp-karma
+maintainers:
+  - name: driosalido
+    email: driosalido@gmail.com

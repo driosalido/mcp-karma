@@ -60,3 +60,6 @@ Thumbs.db
 .env
 docker-compose.override.yml
 *.dockerfile.tmp
+
+# Helm
+helm/karma-mcp/values-teddy.yaml
