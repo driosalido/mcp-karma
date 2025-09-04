@@ -33,7 +33,22 @@ uv run python tests/manual/test_mcp_tools.py
 cd src && python -m karma_mcp.server
 ```
 
-### 4. Configure in Claude Desktop
+### 4. Using Docker (Alternative)
+
+```bash
+# Build the Docker image
+./docker/build.sh
+
+# Run with Docker
+KARMA_URL=http://your-karma-url:8080 ./docker/run.sh
+
+# Or use docker-compose
+cp .env.docker .env
+# Edit .env with your settings
+docker-compose up -d
+```
+
+### 5. Configure in Claude Desktop
 
 Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 

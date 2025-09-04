@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  karma-mcp:
+    build: .
+    image: karma-mcp:latest
+    container_name: karma-mcp-server
+    environment:
+      - KARMA_URL=${KARMA_URL:-http://karma:8080}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    # Uncomment for development mode with volume mounting
+    # volumes:
+    #   - ./src:/app/src:ro
+    networks:
+      - karma-network
+    restart: unless-stopped
+    # For stdio MCP mode, no ports needed
+    # ports:
+    #   - "8000:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('/app/src'); from karma_mcp.server import check_karma; import asyncio; exit(0 if 'running' in asyncio.run(check_karma()).lower() else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      karma:
+        condition: service_healthy
+    
+  # Example Karma service (for testing)
+  # Replace with your actual Karma instance or remove if using external Karma
+  karma:
+    image: prom/karma:latest
+    container_name: karma-dashboard
+    ports:
+      - "8080:8080"
+    environment:
+      - ALERTMANAGER_URI=http://alertmanager:9093
+    networks:
+      - karma-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Uncomment if you have alertmanager config
+    # volumes:
+    #   - ./karma.yml:/karma.yml:ro
+    # command: ["--config.file=/karma.yml"]
+
+networks:
+  karma-network:
+    driver: bridge
