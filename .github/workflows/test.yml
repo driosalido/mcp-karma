@@ -186,17 +186,35 @@ jobs:
           context: .
           file: ./docker/Dockerfile
           push: false
+          load: true  # Load image into local Docker daemon for testing
           tags: karma-mcp:test
-          platforms: linux/amd64
+          platforms: linux/amd64  # Single platform when loading locally
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
       - name: Test Docker image
         run: |
-          docker run --rm karma-mcp:test python -c "
+          echo "## 🐳 Docker Image Test" >> $GITHUB_STEP_SUMMARY
+          
+          # Verify image was built and loaded
+          if docker images | grep -q "karma-mcp.*test"; then
+            echo "✅ Docker image found locally" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker image not found locally" >> $GITHUB_STEP_SUMMARY
+            docker images >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          # Test basic Python imports
+          if docker run --rm karma-mcp:test python -c "
           import sys
           sys.path.insert(0, '/app/src')
           from karma_mcp.server import check_karma, search_alerts_by_container, get_alert_details_multi_cluster
           print('✅ All imports successful')
           print('✅ New search functions available')
-          "
+          "; then
+            echo "✅ Docker image test passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Docker image test failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
