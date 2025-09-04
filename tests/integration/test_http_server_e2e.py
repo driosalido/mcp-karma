@@ -405,7 +405,7 @@ class TestConcurrencyAndLoad:
         client = TestClient(app)
 
         # Make many requests to the same endpoint
-        for i in range(50):
+        for _i in range(50):
             response = client.get("/")
             assert response.status_code == 200
 

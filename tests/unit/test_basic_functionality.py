@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 # Add src to path
 project_root = Path(__file__).parent.parent.parent
@@ -14,9 +15,7 @@ src_path = project_root / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
-from fastapi.testclient import TestClient
-
-from karma_mcp.http_server import app
+from karma_mcp.http_server import app  # noqa: E402
 
 
 class TestHTTPServerBasics:

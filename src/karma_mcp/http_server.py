@@ -106,7 +106,9 @@ async def health_check():
             return {"status": "degraded", "karma": "issues", "message": result}
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=503, detail=f"Health check failed: {str(e)}"
+        ) from e
 
 
 @app.get("/alerts", response_model=MCPResponse)
@@ -243,7 +245,7 @@ async def mcp_tool_endpoint(tool_name: str, params: dict[str, Any] = None):
         return {"success": True, "result": result}
     except Exception as e:
         logger.error(f"Error executing tool {tool_name}: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # MCP protocol endpoint for proper JSON-RPC communication

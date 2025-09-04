@@ -10,17 +10,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient, Response
 
+from tests.fixtures.karma_data import (  # noqa: E402
+    EMPTY_KARMA_RESPONSE,
+    HEALTH_RESPONSE,
+    SAMPLE_KARMA_RESPONSE,
+)
+
 # Add src directory to Python path
 project_root = Path(__file__).parent.parent
 src_path = project_root / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-
-from tests.fixtures.karma_data import (
-    EMPTY_KARMA_RESPONSE,
-    HEALTH_RESPONSE,
-    SAMPLE_KARMA_RESPONSE,
-)
 
 
 @pytest.fixture

@@ -221,7 +221,7 @@ class TestRealWorldScenarios:
     async def test_state_filtering_counts_consistency(self):
         """Test that state filtering counts are mathematically consistent"""
         # Get counts from summary
-        summary = await get_alerts_summary()
+        await get_alerts_summary()
 
         # Get individual state results
         active_result = await get_alerts_by_state("active")
