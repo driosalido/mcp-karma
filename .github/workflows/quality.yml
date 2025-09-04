@@ -35,7 +35,12 @@ jobs:
         run: uv python install 3.12
       
       - name: Install dependencies
-        run: uv sync --dev
+        run: |
+          uv sync --all-extras --dev
+          # Verify tools are available
+          uv run ruff --version || uv add --dev ruff
+          uv run mypy --version || uv add --dev mypy  
+          uv run bandit --version || uv add --dev bandit
       
       - name: Check code formatting with ruff
         run: |

@@ -60,6 +60,11 @@ jobs:
         run: |
           echo "📦 Installing dependencies..." >> $GITHUB_STEP_SUMMARY
           uv sync --all-extras --dev
+          # Verify critical tools are available
+          echo "🔍 Verifying tools installation..." >> $GITHUB_STEP_SUMMARY
+          uv run ruff --version && echo "✅ ruff available" >> $GITHUB_STEP_SUMMARY || echo "❌ ruff missing" >> $GITHUB_STEP_SUMMARY
+          uv run mypy --version && echo "✅ mypy available" >> $GITHUB_STEP_SUMMARY || echo "❌ mypy missing" >> $GITHUB_STEP_SUMMARY
+          uv run pytest --version && echo "✅ pytest available" >> $GITHUB_STEP_SUMMARY || echo "❌ pytest missing" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event.inputs.debug }}" = "true" ]; then
             echo "🔍 Installed packages:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -70,6 +75,13 @@ jobs:
       - name: Run linting
         run: |
           echo "## 🔧 Linting Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Try with uv run, fallback to direct installation if needed
+          if ! uv run ruff --version >/dev/null 2>&1; then
+            echo "⚠️ ruff not found via uv, installing directly..." >> $GITHUB_STEP_SUMMARY
+            uv add --dev ruff
+          fi
+          
           if uv run ruff check . --output-format=github; then
             echo "✅ Ruff linting passed" >> $GITHUB_STEP_SUMMARY
           else
@@ -89,6 +101,13 @@ jobs:
         continue-on-error: true
         run: |
           echo "## 🔍 Type Checking Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Ensure mypy is available
+          if ! uv run mypy --version >/dev/null 2>&1; then
+            echo "⚠️ mypy not found via uv, installing directly..." >> $GITHUB_STEP_SUMMARY
+            uv add --dev mypy
+          fi
+          
           if uv run mypy src/ --show-error-codes --pretty; then
             echo "✅ Type checking passed" >> $GITHUB_STEP_SUMMARY
           else
@@ -104,6 +123,13 @@ jobs:
       - name: Run unit tests
         run: |
           echo "## 🧪 Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Ensure pytest is available
+          if ! uv run pytest --version >/dev/null 2>&1; then
+            echo "⚠️ pytest not found via uv, installing directly..." >> $GITHUB_STEP_SUMMARY
+            uv add --dev pytest pytest-asyncio pytest-httpx pytest-mock coverage
+          fi
+          
           if uv run python scripts/run_tests.py --unit --verbose; then
             echo "✅ Unit tests passed" >> $GITHUB_STEP_SUMMARY
           else
