@@ -1,0 +1,72 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      
+      - name: Set up Python
+        run: uv python install 3.12
+      
+      - name: Install dependencies
+        run: uv sync --dev
+      
+      - name: Check code formatting with ruff
+        run: |
+          echo "## 🔧 Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          uv run ruff format --check . || {
+            echo "❌ Code formatting issues found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`uv run ruff format .\` to fix formatting issues" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+          echo "✅ Code formatting is correct" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Run linting with ruff
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🧹 Linting Check" >> $GITHUB_STEP_SUMMARY
+          uv run ruff check . || {
+            echo "❌ Linting issues found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`uv run ruff check --fix .\` to fix auto-fixable issues" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+          echo "✅ No linting issues found" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Type checking with mypy
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 Type Checking" >> $GITHUB_STEP_SUMMARY
+          uv run mypy src/ || {
+            echo "❌ Type checking failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
+          echo "✅ Type checking passed" >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true  # Don't fail the build on type errors for now
+      
+      - name: Security check with bandit
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔒 Security Check" >> $GITHUB_STEP_SUMMARY
+          uv run bandit -r src/ -f json | jq -r '.results[] | "⚠️  " + .filename + ":" + (.line_number|tostring) + " - " + .test_name + ": " + .issue_text' >> $GITHUB_STEP_SUMMARY || true
+          uv run bandit -r src/ || {
+            echo "⚠️  Security issues found - please review" >> $GITHUB_STEP_SUMMARY
+            exit 0  # Don't fail on security warnings, just report them
+          }
+          echo "✅ No security issues found" >> $GITHUB_STEP_SUMMARY
+        continue-on-error: true

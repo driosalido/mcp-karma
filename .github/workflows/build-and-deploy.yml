@@ -1,39 +1,22 @@
-name: Release Docker Image
+name: Build and Deploy
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main ]
 
 env:
   REGISTRY: docker.io
   IMAGE_NAME: driosalido/karma-mcp
 
 jobs:
-  # Run full test suite before release
+  # Run tests first
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-      
-      - name: Set up Python
-        run: uv python install 3.12
-      
-      - name: Install dependencies
-        run: uv sync --all-extras --dev
-      
-      - name: Run tests
-        run: |
-          uv run python scripts/run_tests.py --unit --verbose
-          uv run python scripts/run_tests.py --integration --verbose
-        env:
-          KARMA_URL: http://localhost:8080
+    uses: ./.github/workflows/test.yml
 
+  # Build and push Docker images
   build-and-push:
     runs-on: ubuntu-latest
     needs: test
@@ -49,6 +32,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -61,28 +45,30 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Tag event (e.g., v1.0.0)
+            # Set latest tag for main branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Git short commit for main branch
+            type=sha,prefix={{branch}}-,enable={{is_default_branch}}
+            # Tag event
             type=ref,event=tag
-            # Semantic versioning
+            # Semver tags
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            # Latest tag for releases
-            type=raw,value=latest
+            # Pull request event
+            type=ref,event=pr
           labels: |
             org.opencontainers.image.title=Karma MCP Server
-            org.opencontainers.image.description=MCP server for Karma Alert Dashboard integration with multi-cluster support
+            org.opencontainers.image.description=MCP server for Karma Alert Dashboard integration
             org.opencontainers.image.vendor=driosalido
-            org.opencontainers.image.url=https://github.com/driosalido/karma-mcp
-            org.opencontainers.image.source=https://github.com/driosalido/karma-mcp
-            org.opencontainers.image.licenses=MIT
       
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
+          # Only push if not a PR and we have docker credentials
+          push: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
@@ -93,6 +79,7 @@ jobs:
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
       
       - name: Update Docker Hub description
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -100,23 +87,20 @@ jobs:
           repository: ${{ env.IMAGE_NAME }}
           readme-filepath: ./README.md
       
-      - name: Create Release Summary
+      - name: Docker Image Summary
         run: |
-          echo "## 🚀 Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐳 Docker Image Built" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Docker Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Available Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Supported Architectures:**" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/amd64 ✅" >> $GITHUB_STEP_SUMMARY
-          echo "- linux/arm64 ✅" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Latest Features:**" >> $GITHUB_STEP_SUMMARY
-          echo "- 🔍 Multi-cluster alert search by name (\`get_alert_details_multi_cluster\`)" >> $GITHUB_STEP_SUMMARY
-          echo "- 🐳 Container-based alert search (\`search_alerts_by_container\`)" >> $GITHUB_STEP_SUMMARY
-          echo "- 🌐 Enhanced REST API endpoints" >> $GITHUB_STEP_SUMMARY
-          echo "- 🚀 Full MCP protocol support with new tools" >> $GITHUB_STEP_SUMMARY
+          echo "**New Features:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Multi-cluster alert search by name" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐳 Multi-cluster container alert search" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Enhanced MCP protocol support" >> $GITHUB_STEP_SUMMARY

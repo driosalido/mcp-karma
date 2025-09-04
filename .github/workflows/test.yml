@@ -1,0 +1,97 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras --dev
+      
+      - name: Run linting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      
+      - name: Run type checking
+        run: |
+          uv run mypy src/
+      
+      - name: Run unit tests
+        run: |
+          uv run python scripts/run_tests.py --unit --verbose
+      
+      - name: Run integration tests
+        run: |
+          uv run python scripts/run_tests.py --integration --verbose
+        env:
+          KARMA_URL: http://localhost:8080
+      
+      - name: Generate coverage report
+        run: |
+          uv run coverage run -m pytest tests/unit/ tests/integration/
+          uv run coverage xml
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: matrix.python-version == '3.12'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          file: ./coverage.xml
+          fail_ci_if_error: false
+
+  test-docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker image (test)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: false
+          tags: karma-mcp:test
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Test Docker image
+        run: |
+          docker run --rm karma-mcp:test python -c "
+          import sys
+          sys.path.insert(0, '/app/src')
+          from karma_mcp.server import check_karma, search_alerts_by_container, get_alert_details_multi_cluster
+          print('✅ All imports successful')
+          print('✅ New search functions available')
+          "
