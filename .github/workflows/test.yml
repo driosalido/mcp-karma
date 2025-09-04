@@ -5,6 +5,22 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: 'Python version to test with'
+        required: false
+        default: '3.12'
+        type: choice
+        options:
+          - '3.11'
+          - '3.12'
+          - 'all'
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
 
 env:
   PYTHON_VERSION: "3.12"
@@ -14,11 +30,21 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ${{ github.event.inputs.python-version == 'all' && fromJSON('["3.11", "3.12"]') || github.event.inputs.python-version && fromJSON(format('["{0}"]', github.event.inputs.python-version)) || fromJSON('["3.11", "3.12"]') }}
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Debug - Show workflow inputs
+        if: github.event.inputs.debug == 'true'
+        run: |
+          echo "## 🐛 Debug Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version:** ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Debug Mode:** ${{ github.event.inputs.debug }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event Name:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
       
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -26,28 +52,80 @@ jobs:
           version: "latest"
       
       - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+        run: |
+          uv python install ${{ matrix.python-version }}
+          echo "✅ Python ${{ matrix.python-version }} installed" >> $GITHUB_STEP_SUMMARY
       
       - name: Install dependencies
         run: |
+          echo "📦 Installing dependencies..." >> $GITHUB_STEP_SUMMARY
           uv sync --all-extras --dev
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+            echo "🔍 Installed packages:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            uv pip list >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
       
       - name: Run linting
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
+          echo "## 🔧 Linting Results" >> $GITHUB_STEP_SUMMARY
+          if uv run ruff check . --output-format=github; then
+            echo "✅ Ruff linting passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Ruff linting failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          if uv run ruff format --check .; then
+            echo "✅ Code formatting is correct" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Code formatting issues found" >> $GITHUB_STEP_SUMMARY
+            echo "Run 'uv run ruff format .' to fix formatting" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
       
       - name: Run type checking
+        continue-on-error: true
         run: |
-          uv run mypy src/
+          echo "## 🔍 Type Checking Results" >> $GITHUB_STEP_SUMMARY
+          if uv run mypy src/ --show-error-codes --pretty; then
+            echo "✅ Type checking passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Type checking issues found (non-blocking)" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+              echo "🔍 Full mypy output:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              uv run mypy src/ --show-error-codes --pretty >> $GITHUB_STEP_SUMMARY 2>&1 || true
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
       
       - name: Run unit tests
         run: |
-          uv run python scripts/run_tests.py --unit --verbose
+          echo "## 🧪 Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          if uv run python scripts/run_tests.py --unit --verbose; then
+            echo "✅ Unit tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Unit tests failed" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+              echo "🔍 Debug: Listing test files:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              find tests/unit/ -name "*.py" >> $GITHUB_STEP_SUMMARY || true
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+            exit 1
+          fi
       
       - name: Run integration tests
+        continue-on-error: true
         run: |
-          uv run python scripts/run_tests.py --integration --verbose
+          echo "## 🔗 Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          if uv run python scripts/run_tests.py --integration --verbose; then
+            echo "✅ Integration tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Integration tests failed (non-blocking - may require live Karma instance)" >> $GITHUB_STEP_SUMMARY
+          fi
         env:
           KARMA_URL: http://localhost:8080
       

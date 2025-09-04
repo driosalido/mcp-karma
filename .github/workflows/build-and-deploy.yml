@@ -6,6 +6,23 @@ on:
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force-push:
+        description: 'Force push even for PRs'
+        required: false
+        default: false
+        type: boolean
+      platforms:
+        description: 'Target platforms'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: docker.io
@@ -62,16 +79,31 @@ jobs:
             org.opencontainers.image.description=MCP server for Karma Alert Dashboard integration
             org.opencontainers.image.vendor=driosalido
       
+      - name: Debug build information
+        if: github.event.inputs.debug == 'true'
+        run: |
+          echo "## 🐛 Build Debug Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Force Push:** ${{ github.event.inputs.force-push }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platforms:** ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Push:** ${{ (github.event_name != 'pull_request' || github.event.inputs.force-push == 'true') && github.actor != 'dependabot[bot]' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Actor:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/Dockerfile
-          # Only push if not a PR and we have docker credentials
-          push: ${{ github.event_name != 'pull_request' && github.actor != 'dependabot[bot]' }}
+          # Only push if not a PR and we have docker credentials, or if force-push is enabled
+          push: ${{ (github.event_name != 'pull_request' || github.event.inputs.force-push == 'true') && github.actor != 'dependabot[bot]' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |

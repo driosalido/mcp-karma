@@ -3,6 +3,22 @@ name: Release Docker Image
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      platforms:
+        description: 'Target platforms'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
 
 env:
   REGISTRY: docker.io
@@ -55,18 +71,34 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       
+      - name: Set release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+            echo "## 🐛 Release Debug Info" >> $GITHUB_STEP_SUMMARY
+            echo "- **Input Tag:** ${{ github.event.inputs.tag }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **GitHub Ref:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Final Tag:** $([ -n "${{ github.event.inputs.tag }}" ] && echo "${{ github.event.inputs.tag }}" || echo "${{ github.ref_name }}")" >> $GITHUB_STEP_SUMMARY
+          fi
+      
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Tag event (e.g., v1.0.0)
-            type=ref,event=tag
-            # Semantic versioning
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            # Manual tag input or tag event (e.g., v1.0.0)
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            # Semantic versioning from tag
+            type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ steps.tag.outputs.tag }}
             # Latest tag for releases
             type=raw,value=latest
           labels: |
@@ -85,12 +117,12 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event.inputs.platforms || 'linux/amd64,linux/arm64' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
-            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+            VERSION=${{ steps.tag.outputs.tag }}
       
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@v4

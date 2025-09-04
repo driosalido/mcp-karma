@@ -4,6 +4,17 @@ on:
   pull_request:
     branches: [ main ]
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: 'PR number to review'
+        required: false
+        type: string
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   review:

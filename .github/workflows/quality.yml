@@ -5,6 +5,18 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      skip-tests:
+        description: 'Skip security tests'
+        required: false
+        default: false
+        type: boolean
+      debug:
+        description: 'Enable debug mode'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   lint-and-format:
@@ -60,9 +72,15 @@ jobs:
         continue-on-error: true  # Don't fail the build on type errors for now
       
       - name: Security check with bandit
+        if: github.event.inputs.skip-tests != 'true'
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 🔒 Security Check" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.debug }}" = "true" ]; then
+            echo "🔍 Running security scan with debug output..." >> $GITHUB_STEP_SUMMARY
+            uv run bandit -r src/ -v >> $GITHUB_STEP_SUMMARY 2>&1 || true
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           uv run bandit -r src/ -f json | jq -r '.results[] | "⚠️  " + .filename + ":" + (.line_number|tostring) + " - " + .test_name + ": " + .issue_text' >> $GITHUB_STEP_SUMMARY || true
           uv run bandit -r src/ || {
             echo "⚠️  Security issues found - please review" >> $GITHUB_STEP_SUMMARY
@@ -70,3 +88,18 @@ jobs:
           }
           echo "✅ No security issues found" >> $GITHUB_STEP_SUMMARY
         continue-on-error: true
+      
+      - name: Debug information
+        if: github.event.inputs.debug == 'true'
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🐛 Debug Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Skip Security:** ${{ github.event.inputs.skip-tests }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
+          echo "- **UV Version:** $(uv --version)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Project Structure:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          find src/ -name "*.py" | head -10 >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
