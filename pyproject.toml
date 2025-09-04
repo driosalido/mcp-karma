@@ -1,0 +1,30 @@
+[project]
+name = "karma-mcp"
+version = "0.1.0"
+description = "MCP server for Karma Alert Dashboard integration with Claude"
+authors = [
+    {name = "Karma MCP Contributors"}
+]
+license = "MIT"
+readme = "README.md"
+keywords = ["mcp", "karma", "alerts", "kubernetes", "prometheus", "claude"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
