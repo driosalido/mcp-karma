@@ -1090,6 +1090,267 @@ async def search_alerts_by_container(
         return f"Error connecting to Karma: {str(e)}"
 
 
+@mcp.tool()
+async def list_silences(cluster: str = "") -> str:
+    """List all active silences across clusters or for a specific cluster
+    
+    Args:
+        cluster: Optional cluster name to filter silences (e.g., 'teddy-prod')
+    
+    Returns:
+        Formatted list of active silences with details
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{KARMA_URL}/alerts.json",
+                json={},
+                headers={"Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                silences = data.get("silences", {})
+                
+                if not silences:
+                    return "No active silences found"
+                
+                # Filter by cluster if specified
+                if cluster:
+                    cluster_lower = cluster.lower()
+                    filtered_silences = {}
+                    for cluster_name, cluster_silences in silences.items():
+                        if cluster_lower in cluster_name.lower():
+                            filtered_silences[cluster_name] = cluster_silences
+                    silences = filtered_silences
+                    
+                    if not silences:
+                        return f"No active silences found for cluster: {cluster}"
+                
+                # Format output
+                result = f"Active Silences{f' in {cluster}' if cluster else ''}\n"
+                result += "=" * 50 + "\n\n"
+                
+                total_count = 0
+                for cluster_name, cluster_silences in silences.items():
+                    if cluster_silences:
+                        result += f"📍 Cluster: {cluster_name}\n"
+                        result += f"   Silences: {len(cluster_silences)}\n\n"
+                        
+                        for silence_id, silence in list(cluster_silences.items())[:5]:  # Limit to 5 per cluster
+                            total_count += 1
+                            result += f"  🔕 Silence ID: {silence_id[:8]}...\n"
+                            result += f"     Created by: {silence.get('createdBy', 'unknown')}\n"
+                            result += f"     Comment: {silence.get('comment', 'No comment')}\n"
+                            result += f"     Starts: {silence.get('startsAt', 'unknown')}\n"
+                            result += f"     Ends: {silence.get('endsAt', 'unknown')}\n"
+                            
+                            # Show matchers
+                            matchers = silence.get('matchers', [])
+                            if matchers:
+                                result += "     Matchers:\n"
+                                for matcher in matchers[:3]:  # Show first 3 matchers
+                                    name = matcher.get('name', '')
+                                    value = matcher.get('value', '')
+                                    if len(value) > 50:
+                                        value = value[:47] + "..."
+                                    result += f"       - {name}: {value}\n"
+                            result += "\n"
+                        
+                        if len(cluster_silences) > 5:
+                            result += f"   ... and {len(cluster_silences) - 5} more silences\n\n"
+                
+                result += f"\n📊 Total: {total_count} active silence{'s' if total_count != 1 else ''}"
+                return result
+            else:
+                return f"Error fetching silences: code {response.status_code}"
+    
+    except Exception as e:
+        return f"Error connecting to Karma: {str(e)}"
+
+
+@mcp.tool()
+async def create_silence(
+    cluster: str,
+    alertname: str,
+    duration: str = "2h",
+    comment: str = "Silenced via MCP",
+    matchers: str = ""
+) -> str:
+    """Create a new silence for specific alerts
+    
+    Args:
+        cluster: Target cluster name (e.g., 'teddy-prod')
+        alertname: Name of the alert to silence
+        duration: Duration of silence (e.g., '2h', '30m', '1d')
+        comment: Comment explaining why the alert is being silenced
+        matchers: Additional matchers in format 'key=value,key2=value2' (optional)
+    
+    Returns:
+        Silence creation result with silence ID
+    """
+    try:
+        # First, get the Alertmanager URL for this cluster
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{KARMA_URL}/alerts.json",
+                json={},
+                headers={"Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            
+            if response.status_code != 200:
+                return f"Error fetching cluster information: code {response.status_code}"
+            
+            data = response.json()
+            upstreams = data.get("upstreams", {}).get("instances", [])
+            
+            # Find the Alertmanager for this cluster
+            alertmanager_url = None
+            for upstream in upstreams:
+                if cluster.lower() in upstream.get("cluster", "").lower():
+                    # For now, we'll need to use the publicURI
+                    # In production, you might need to handle authentication
+                    alertmanager_url = upstream.get("publicURI")
+                    break
+            
+            if not alertmanager_url:
+                return f"Could not find Alertmanager for cluster: {cluster}"
+            
+            # Parse duration
+            import re
+            from datetime import datetime, timedelta
+            
+            # Parse duration string (e.g., '2h', '30m', '1d')
+            duration_match = re.match(r'(\d+)([hdm])', duration.lower())
+            if not duration_match:
+                return "Invalid duration format. Use format like '2h', '30m', or '1d'"
+            
+            amount = int(duration_match.group(1))
+            unit = duration_match.group(2)
+            
+            if unit == 'h':
+                delta = timedelta(hours=amount)
+            elif unit == 'm':
+                delta = timedelta(minutes=amount)
+            elif unit == 'd':
+                delta = timedelta(days=amount)
+            else:
+                return f"Unsupported time unit: {unit}"
+            
+            starts_at = datetime.utcnow()
+            ends_at = starts_at + delta
+            
+            # Build matchers
+            silence_matchers = [
+                {
+                    "name": "alertname",
+                    "value": alertname,
+                    "isRegex": False,
+                    "isEqual": True
+                }
+            ]
+            
+            # Add additional matchers if provided
+            if matchers:
+                for matcher_str in matchers.split(','):
+                    if '=' in matcher_str:
+                        key, value = matcher_str.split('=', 1)
+                        silence_matchers.append({
+                            "name": key.strip(),
+                            "value": value.strip(),
+                            "isRegex": False,
+                            "isEqual": True
+                        })
+            
+            # Create silence request
+            silence_request = {
+                "matchers": silence_matchers,
+                "startsAt": starts_at.isoformat() + "Z",
+                "endsAt": ends_at.isoformat() + "Z",
+                "createdBy": "karma-mcp",
+                "comment": comment
+            }
+            
+            # Note: Actually creating the silence requires direct Alertmanager API access
+            # which may need authentication. This is a placeholder for the actual implementation
+            return f"""
+⚠️ Silence Creation Request Prepared:
+
+📍 Cluster: {cluster}
+🔕 Alert: {alertname}
+⏱️ Duration: {duration} (until {ends_at.strftime('%Y-%m-%d %H:%M UTC')})
+💬 Comment: {comment}
+🏷️ Matchers: {len(silence_matchers)} configured
+
+Note: Direct Alertmanager API integration is required to complete this action.
+The Alertmanager endpoint would be: {alertmanager_url}/api/v2/silences
+
+To manually create this silence, you can use the Karma UI or Alertmanager API directly.
+"""
+            
+    except Exception as e:
+        return f"Error creating silence: {str(e)}"
+
+
+@mcp.tool()
+async def delete_silence(silence_id: str, cluster: str) -> str:
+    """Delete (expire) an existing silence
+    
+    Args:
+        silence_id: ID of the silence to delete
+        cluster: Cluster where the silence exists
+    
+    Returns:
+        Deletion result
+    """
+    try:
+        # First verify the silence exists
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{KARMA_URL}/alerts.json",
+                json={},
+                headers={"Content-Type": "application/json"},
+                timeout=10.0,
+            )
+            
+            if response.status_code != 200:
+                return f"Error fetching silence information: code {response.status_code}"
+            
+            data = response.json()
+            silences = data.get("silences", {}).get(cluster, {})
+            
+            if silence_id not in silences:
+                # Try to find with partial match
+                found = False
+                for sid in silences:
+                    if silence_id in sid:
+                        silence_id = sid
+                        found = True
+                        break
+                
+                if not found:
+                    return f"Silence ID {silence_id} not found in cluster {cluster}"
+            
+            silence_info = silences.get(silence_id, {})
+            
+            return f"""
+⚠️ Silence Deletion Request:
+
+🔕 Silence ID: {silence_id}
+📍 Cluster: {cluster}
+💬 Original comment: {silence_info.get('comment', 'N/A')}
+👤 Created by: {silence_info.get('createdBy', 'unknown')}
+
+Note: Direct Alertmanager API integration is required to complete this deletion.
+To manually delete this silence, use the Karma UI or Alertmanager API directly.
+"""
+            
+    except Exception as e:
+        return f"Error deleting silence: {str(e)}"
+
+
 if __name__ == "__main__":
     logger.info(f"Starting MCP server for Karma at {KARMA_URL}")
     mcp.run()

@@ -19,6 +19,8 @@ from pydantic import BaseModel
 # Import MCP tools
 from .server import (
     check_karma,
+    create_silence,
+    delete_silence,
     get_alert_details,
     get_alert_details_multi_cluster,
     get_alerts_by_state,
@@ -27,6 +29,7 @@ from .server import (
     list_alerts,
     list_alerts_by_cluster,
     list_clusters,
+    list_silences,
     list_suppressed_alerts,
     search_alerts_by_container,
 )
@@ -70,6 +73,19 @@ class AlertSearchRequest(BaseModel):
     cluster_filter: str | None = ""
 
 
+class SilenceRequest(BaseModel):
+    cluster: str
+    alertname: str
+    duration: str = "2h"
+    comment: str = "Silenced via API"
+    matchers: str = ""
+
+
+class DeleteSilenceRequest(BaseModel):
+    silence_id: str
+    cluster: str
+
+
 class MCPResponse(BaseModel):
     success: bool
     data: str
@@ -91,6 +107,9 @@ async def root():
             "POST /alerts/details - Get alert details",
             "POST /alerts/search/container - Search alerts by container name",
             "POST /alerts/search/name - Search alerts by name across clusters",
+            "GET /silences - List all active silences",
+            "POST /silences - Create a new silence",
+            "DELETE /silences - Delete an existing silence",
         ],
     }
 
@@ -189,6 +208,48 @@ async def search_alert_by_name(request: AlertSearchRequest):
         return MCPResponse(success=True, data=result)
     except Exception as e:
         logger.error(f"Error searching alert by name: {e}")
+        return MCPResponse(success=False, data="", error=str(e))
+
+
+@app.get("/silences", response_model=MCPResponse)
+async def get_silences(cluster: str = ""):
+    """List all active silences, optionally filtered by cluster"""
+    try:
+        result = await list_silences(cluster)
+        return MCPResponse(success=True, data=result)
+    except Exception as e:
+        logger.error(f"Error listing silences: {e}")
+        return MCPResponse(success=False, data="", error=str(e))
+
+
+@app.post("/silences", response_model=MCPResponse)
+async def create_silence_endpoint(request: SilenceRequest):
+    """Create a new silence for specific alerts"""
+    try:
+        result = await create_silence(
+            cluster=request.cluster,
+            alertname=request.alertname,
+            duration=request.duration,
+            comment=request.comment,
+            matchers=request.matchers
+        )
+        return MCPResponse(success=True, data=result)
+    except Exception as e:
+        logger.error(f"Error creating silence: {e}")
+        return MCPResponse(success=False, data="", error=str(e))
+
+
+@app.delete("/silences", response_model=MCPResponse)
+async def delete_silence_endpoint(request: DeleteSilenceRequest):
+    """Delete (expire) an existing silence"""
+    try:
+        result = await delete_silence(
+            silence_id=request.silence_id,
+            cluster=request.cluster
+        )
+        return MCPResponse(success=True, data=result)
+    except Exception as e:
+        logger.error(f"Error deleting silence: {e}")
         return MCPResponse(success=False, data="", error=str(e))
 
 

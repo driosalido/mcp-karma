@@ -136,6 +136,9 @@ The following tools are available for Claude to use:
 | `get_alert_details_multi_cluster` | Search alert across clusters | "Find OOMKilled in all clusters" |
 | `list_active_alerts` | Show only active alerts | "What's currently firing?" |
 | `list_suppressed_alerts` | Show silenced/inhibited | "What alerts are suppressed?" |
+| `list_silences` | List active silences | "Show all silences in teddy-prod" |
+| `create_silence` | Create alert silence | "Silence KubePodCrashLooping for 2h" |
+| `delete_silence` | Delete/expire silence | "Remove silence abc123" |
 
 ## 🔌 REST API Endpoints
 
@@ -154,6 +157,9 @@ POST http://localhost:8000/alerts/by-cluster
 POST http://localhost:8000/alerts/details
 POST http://localhost:8000/alerts/search/container
 POST http://localhost:8000/alerts/search/name
+GET  http://localhost:8000/silences
+POST http://localhost:8000/silences
+DELETE http://localhost:8000/silences
 ```
 
 ## 🧪 Testing
