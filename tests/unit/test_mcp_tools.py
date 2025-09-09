@@ -2,7 +2,7 @@
 Unit tests for MCP tools
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -30,7 +30,7 @@ class TestCheckKarma:
         """Test successful karma health check"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_client.get.return_value = mock_response
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -46,7 +46,7 @@ class TestCheckKarma:
         """Test karma health check with HTTP error"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 500
             mock_client.get.return_value = mock_response
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -77,7 +77,7 @@ class TestListAlerts:
         """Test successful alert listing"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -95,7 +95,7 @@ class TestListAlerts:
         """Test alert listing with empty response"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = empty_karma_data
             mock_client.post.return_value = mock_response
@@ -103,14 +103,14 @@ class TestListAlerts:
 
             result = await list_alerts()
 
-            assert "Found 0 alerts" in result
+            assert "No active alerts" in result
 
     @pytest.mark.asyncio
     async def test_list_alerts_http_error(self, env_setup):
         """Test alert listing with HTTP error"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 500
             mock_client.post.return_value = mock_response
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -128,7 +128,7 @@ class TestGetAlertsSummary:
         """Test successful alerts summary"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -150,7 +150,7 @@ class TestStateFiltering:
         """Test listing only active alerts"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -168,7 +168,7 @@ class TestStateFiltering:
         """Test listing only suppressed alerts"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -195,7 +195,7 @@ class TestStateFiltering:
         """Test get_alerts_by_state with valid states"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -243,7 +243,7 @@ class TestStateFiltering:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = suppressed_only_data
             mock_client.post.return_value = mock_response
@@ -277,7 +277,7 @@ class TestStateFiltering:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = active_only_data
             mock_client.post.return_value = mock_response
@@ -296,7 +296,7 @@ class TestGetAlertDetails:
         """Test successful alert details retrieval"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -315,7 +315,7 @@ class TestGetAlertDetails:
         """Test alert details for non-existent alert"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -334,7 +334,7 @@ class TestListClusters:
         """Test successful cluster listing"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -355,7 +355,7 @@ class TestListAlertsByCluster:
         """Test successful alert filtering by cluster"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -363,7 +363,7 @@ class TestListAlertsByCluster:
 
             result = await list_alerts_by_cluster("teddy-prod")
 
-            assert "Alerts in cluster: teddy-prod" in result
+            assert "Alerts in cluster 'teddy-prod'" in result
             # Should contain alerts from the sample data
             assert "KubePodCrashLooping" in result or "HighMemoryUsage" in result
 
@@ -372,7 +372,7 @@ class TestListAlertsByCluster:
         """Test alert filtering by non-existent cluster"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = sample_karma_data
             mock_client.post.return_value = mock_response
@@ -404,7 +404,7 @@ class TestErrorHandling:
         """Test behavior when Karma returns invalid JSON"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.side_effect = ValueError("Invalid JSON")
             mock_client.post.return_value = mock_response
@@ -472,7 +472,7 @@ class TestSearchAlertsByContainer:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = container_data
             mock_client.post.return_value = mock_response
@@ -529,7 +529,7 @@ class TestSearchAlertsByContainer:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = container_data
             mock_client.post.return_value = mock_response
@@ -550,7 +550,7 @@ class TestSearchAlertsByContainer:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = empty_data
             mock_client.post.return_value = mock_response
@@ -589,7 +589,7 @@ class TestSearchAlertsByContainer:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = container_data
             mock_client.post.return_value = mock_response
@@ -607,7 +607,7 @@ class TestSearchAlertsByContainer:
         """Test container search with HTTP error"""
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 500
             mock_client.post.return_value = mock_response
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -648,7 +648,7 @@ class TestSearchAlertsByContainer:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = container_data
             mock_client.post.return_value = mock_response
@@ -736,7 +736,7 @@ class TestGetAlertDetailsMultiCluster:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = multi_cluster_data
             mock_client.post.return_value = mock_response
@@ -791,7 +791,7 @@ class TestGetAlertDetailsMultiCluster:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = multi_cluster_data
             mock_client.post.return_value = mock_response
@@ -813,7 +813,7 @@ class TestGetAlertDetailsMultiCluster:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = empty_data
             mock_client.post.return_value = mock_response
@@ -852,7 +852,7 @@ class TestGetAlertDetailsMultiCluster:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = data
             mock_client.post.return_value = mock_response
@@ -906,7 +906,7 @@ class TestGetAlertDetailsMultiCluster:
 
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = data
             mock_client.post.return_value = mock_response
