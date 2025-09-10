@@ -231,7 +231,7 @@ async def create_silence_endpoint(request: SilenceRequest):
             alertname=request.alertname,
             duration=request.duration,
             comment=request.comment,
-            matchers=request.matchers
+            matchers=request.matchers,
         )
         return MCPResponse(success=True, data=result)
     except Exception as e:
@@ -244,8 +244,7 @@ async def delete_silence_endpoint(request: DeleteSilenceRequest):
     """Delete (expire) an existing silence"""
     try:
         result = await delete_silence(
-            silence_id=request.silence_id,
-            cluster=request.cluster
+            silence_id=request.silence_id, cluster=request.cluster
         )
         return MCPResponse(success=True, data=result)
     except Exception as e:

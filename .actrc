@@ -1,0 +1,17 @@
+# Act configuration for local GitHub Actions testing
+# https://github.com/nektos/act
+
+# Use linux/amd64 for Apple Silicon compatibility
+--container-architecture linux/amd64
+
+# Don't pull images every time (faster execution)
+--pull=false
+
+# Reuse containers between runs (faster)
+--reuse
+
+# Use medium size runner image (has more tools pre-installed)
+--platform ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Verbose output for debugging
+# --verbose

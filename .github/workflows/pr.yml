@@ -1,0 +1,149 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: 'PR number to review'
+        required: false
+        type: string
+
+jobs:
+  # Run full CI pipeline
+  pr-ci-check:
+    name: PR CI Validation
+    uses: ./.github/workflows/ci.yml
+    
+  # PR-specific analysis
+  pr-change-analysis:
+    name: PR Change Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            src/**/*.py
+            tests/**/*.py
+            pyproject.toml
+            docker/**/*
+            helm/**/*
+            .github/workflows/**
+      
+      - name: Generate PR Summary
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "## 📋 Pull Request Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Count changed files by type
+          echo "### 📊 Change Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          PYTHON_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -c "\.py$" || true)
+          TEST_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -c "tests/" || true)
+          CONFIG_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -cE "\.(yml|yaml|toml)$" || true)
+          DOCKER_FILES=$(echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | grep -c "docker/" || true)
+          
+          echo "- **Python files changed:** $PYTHON_FILES" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test files changed:** $TEST_FILES" >> $GITHUB_STEP_SUMMARY
+          echo "- **Config files changed:** $CONFIG_FILES" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker files changed:** $DOCKER_FILES" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # List changed files
+          echo "### 📝 Changed Files" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>Click to expand file list</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | sort >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for new functions/classes
+          if [[ $PYTHON_FILES -gt 0 ]]; then
+            echo "### 🆕 New/Modified Code Elements" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "<details>" >> $GITHUB_STEP_SUMMARY
+            echo "<summary>New/modified functions and classes</summary>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`python" >> $GITHUB_STEP_SUMMARY
+            git diff origin/${{ github.base_ref }}...HEAD --unified=0 | grep -E "^\+\s*(def |class )" | sed 's/^+//' | head -20 >> $GITHUB_STEP_SUMMARY || true
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "</details>" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Size of changes
+          echo "### 📏 Change Size" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ADDITIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$1} END {print sum}')
+          DELETIONS=$(git diff --numstat origin/${{ github.base_ref }}...HEAD | awk '{sum+=$2} END {print sum}')
+          echo "- **Lines added:** +$ADDITIONS" >> $GITHUB_STEP_SUMMARY
+          echo "- **Lines removed:** -$DELETIONS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Categorize PR size
+          TOTAL_CHANGES=$((ADDITIONS + DELETIONS))
+          if [[ $TOTAL_CHANGES -lt 50 ]]; then
+            echo "**PR Size:** 🟢 Small (< 50 lines)" >> $GITHUB_STEP_SUMMARY
+          elif [[ $TOTAL_CHANGES -lt 200 ]]; then
+            echo "**PR Size:** 🟡 Medium (50-200 lines)" >> $GITHUB_STEP_SUMMARY
+          elif [[ $TOTAL_CHANGES -lt 500 ]]; then
+            echo "**PR Size:** 🟠 Large (200-500 lines)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**PR Size:** 🔴 Extra Large (> 500 lines)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Consider breaking this PR into smaller chunks**" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: No changes detected
+        if: steps.changed-files.outputs.any_changed == 'false'
+        run: |
+          echo "## ℹ️ No relevant files changed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This PR doesn't contain changes to:" >> $GITHUB_STEP_SUMMARY
+          echo "- Python source files" >> $GITHUB_STEP_SUMMARY
+          echo "- Test files" >> $GITHUB_STEP_SUMMARY
+          echo "- Configuration files" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker files" >> $GITHUB_STEP_SUMMARY
+  
+  # Final PR status
+  pr-final-status:
+    name: PR Final Status
+    runs-on: ubuntu-latest
+    needs: [pr-ci-check, pr-change-analysis]
+    if: always()
+    
+    steps:
+      - name: PR Status Summary
+        run: |
+          echo "## ✅ Pull Request Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.pr-ci-check.result }}" == "success" ]]; then
+            echo "### 🎉 All checks passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This PR is ready for review." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ Some checks failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the issues before merging." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Exit with failure if CI failed
+          if [[ "${{ needs.pr-ci-check.result }}" != "success" ]]; then
+            exit 1
+          fi

@@ -63,3 +63,7 @@ docker-compose.override.yml
 
 # Helm
 helm/karma-mcp/values-teddy.yaml
+values-temp-*.yaml
+
+# Act (GitHub Actions local testing)
+.secrets
