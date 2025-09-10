@@ -4,6 +4,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Protocol-green.svg)](https://modelcontextprotocol.io/)
 [![Docker Support](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://www.docker.com/)
+[![Just](https://img.shields.io/badge/Task_Runner-Just-orange.svg)](https://github.com/casey/just)
 
 **Bring AI-powered intelligence to your Kubernetes alerts.** Karma MCP Server enables Claude to directly interact with your [Karma Alert Dashboard](https://github.com/prymitive/karma), providing natural language queries, analysis, and management of Prometheus/Alertmanager alerts.
 
@@ -62,6 +63,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/driosalido/karma-mcp.git
 cd karma-mcp
 uv sync --all-extras
+
+# Optional: Install Just task runner for easier development
+brew install just        # macOS
+# See: https://github.com/casey/just#installation for other platforms
 ```
 
 2. **Configure Claude Desktop**
@@ -178,16 +183,57 @@ asyncio.run(list_alerts())
 git clone https://github.com/driosalido/karma-mcp.git
 cd karma-mcp
 
-# Install with development dependencies
-uv sync --all-extras --dev
+# Install dependencies (includes dev dependencies)
+uv sync --all-extras
 
-# Install pre-commit hooks
+# Install Just task runner (modern alternative to Make)
+# macOS
+brew install just
+
+# Other platforms: https://github.com/casey/just#installation
+
+# Set up development environment
+just dev-setup
+```
+
+### Task Runner: Just vs Make
+
+This project uses **Just** as the modern task runner (alternative to Make). Key benefits:
+
+- ✅ **No tab/space issues** (common Make problem)
+- ✅ **Better variable handling** and environment integration  
+- ✅ **Cleaner syntax** and cross-platform compatibility
+- ✅ **Built-in command listing** with `just`
+- ✅ **Modern features** like default values and string interpolation
+
+```bash
+# See all available commands
+just
+
+# Common development tasks
+just test-unit              # Run unit tests (78 tests)
+just lint                   # Code linting  
+just format                 # Code formatting
+just check                  # All quality checks
+just test-with-karma        # Test with real Karma server
+just docker-build-local     # Build Docker image
+just version               # Show version info
+```
+
+### Manual Development Commands
+
+If you prefer direct commands or don't have Just installed:
+
+```bash
+# Run tests
+uv run pytest tests/unit/ -v
+
+# Code quality
+uv run ruff check src/ tests/
+uv run ruff format src/ tests/
+
+# Install pre-commit hooks  
 uv run pre-commit install
-
-# Run code quality checks
-uv run ruff check .
-uv run mypy src/
-uv run bandit -r src/
 ```
 
 ### Project Structure
@@ -202,8 +248,11 @@ karma-mcp/
 │   └── fixtures/         # Test data
 ├── docker/
 │   └── Dockerfile        # Docker configuration
-├── pyproject.toml        # Project dependencies
-├── uv.lock              # Locked dependencies
+├── scripts/
+│   └── test_karma.py     # Integration testing utilities
+├── justfile              # Modern task runner (preferred)
+├── Makefile              # Traditional Make tasks (legacy)
+├── pyproject.toml        # Project dependencies and config
 └── .github/workflows/    # CI/CD pipelines
 ```
 
