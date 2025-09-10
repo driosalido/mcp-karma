@@ -8,6 +8,12 @@ import os
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from .prompts import (
+    ALERT_ANALYSIS_PROMPT,
+    INCIDENT_RESPONSE_PROMPT,
+    KUBERNETES_CONTEXT_PROMPT,
+    BUSINESS_IMPACT_PROMPT,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,9 +32,31 @@ KARMA_URL = os.getenv("KARMA_URL", "http://localhost:8080")
 # Create FastMCP server
 mcp = FastMCP("karma-mcp")
 
+# Add prompt resources to help Claude analyze alerts effectively
+@mcp.resource("prompts://alert-analysis")
+async def get_alert_analysis_prompt() -> str:
+    """Comprehensive prompt for alert analysis and troubleshooting"""
+    return ALERT_ANALYSIS_PROMPT
+
+@mcp.resource("prompts://incident-response")
+async def get_incident_response_prompt() -> str:
+    """Guidelines for incident response and escalation"""
+    return INCIDENT_RESPONSE_PROMPT
+
+@mcp.resource("prompts://kubernetes-context") 
+async def get_kubernetes_context_prompt() -> str:
+    """Kubernetes-specific context for alert interpretation"""
+    return KUBERNETES_CONTEXT_PROMPT
+
+@mcp.resource("prompts://business-impact")
+async def get_business_impact_prompt() -> str:
+    """Business impact assessment guidelines for alert prioritization"""
+    return BUSINESS_IMPACT_PROMPT
+
 # Log server startup information
 logger.info(f"🚀 Starting Karma MCP Server v{__version__}")
 logger.info(f"🌐 Karma URL configured: {KARMA_URL}")
+logger.info("📚 Added alert analysis prompts for enhanced AI assistance")
 
 
 # Utility functions to reduce code duplication

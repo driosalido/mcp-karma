@@ -69,10 +69,12 @@ brew install just        # macOS
 # See: https://github.com/casey/just#installation for other platforms
 ```
 
-2. **Configure Claude Desktop**
+2. **Configure Claude Desktop, Claude Code, or Cursor**
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+#### Local Installation (Stdio Mode)
+Add to your MCP client configuration:
 
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -81,7 +83,55 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "args": ["run", "python", "-m", "karma_mcp.server"],
       "cwd": "/path/to/karma-mcp",
       "env": {
-        "KARMA_URL": "http://localhost:8080"
+        "KARMA_URL": "http://your-karma-instance:8080"
+      }
+    }
+  }
+}
+```
+
+**Claude Code** (add to project's `claude_desktop_config.json` or global config):
+```json
+{
+  "mcpServers": {
+    "karma": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "karma_mcp.server"],
+      "cwd": "/path/to/karma-mcp",
+      "env": {
+        "KARMA_URL": "http://your-karma-instance:8080"
+      }
+    }
+  }
+}
+```
+
+**Cursor** (via MCP extension or custom configuration):
+```json
+{
+  "mcpServers": {
+    "karma": {
+      "command": "uv", 
+      "args": ["run", "python", "-m", "karma_mcp.server"],
+      "cwd": "/path/to/karma-mcp",
+      "env": {
+        "KARMA_URL": "http://your-karma-instance:8080"
+      }
+    }
+  }
+}
+```
+
+#### Remote HTTP Server (Alternative)
+If you have deployed the HTTP server version, use SSE transport:
+
+```json
+{
+  "mcpServers": {
+    "karma": {
+      "transport": {
+        "type": "sse",
+        "url": "https://your-karma-mcp-server.com/mcp/sse"
       }
     }
   }
@@ -141,6 +191,28 @@ The following tools are available for Claude to use:
 | `get_alerts_by_state` | Filter by state (active/suppressed/all) | "Show all suppressed alerts" |
 | `search_alerts` | Search alerts by name pattern | "Find all OOM alerts" |
 | `silence_alert` | Create alert silence | "Silence KubePodCrashLooping for 2h" |
+
+## 🧠 AI-Enhanced Analysis
+
+The Karma MCP Server includes specialized prompts that help Claude provide more valuable alert analysis:
+
+### 📚 Available Prompt Resources
+
+| Resource | Purpose | Description |
+|----------|---------|-------------|
+| `prompts://alert-analysis` | Alert Analysis | Comprehensive guidelines for troubleshooting common K8s alerts |
+| `prompts://incident-response` | Incident Response | Escalation procedures and communication templates |
+| `prompts://kubernetes-context` | K8s Context | Deep Kubernetes knowledge for alert interpretation |
+| `prompts://business-impact` | Business Impact | Prioritization framework based on service criticality |
+
+### 🎯 Enhanced Capabilities
+
+With these prompts, Claude can:
+- 🔍 **Correlate related alerts** across clusters and namespaces
+- 🚨 **Prioritize by business impact** (prod > staging > dev)
+- 🔧 **Suggest specific actions** for common alert types
+- 📊 **Provide context** about Kubernetes resource relationships
+- 🚀 **Guide incident response** with escalation procedures
 
 ## 🔌 API Integration
 
