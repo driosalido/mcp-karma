@@ -29,7 +29,7 @@ class TestHTTPServerE2E:
 
         # Test regular request with CORS headers
         response = client.get("/health")
-        
+
         # Check that CORS middleware is working (headers should be present)
         assert response.status_code == 200
         # Note: TestClient doesn't fully simulate browser CORS preflight,
