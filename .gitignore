@@ -67,3 +67,13 @@ values-temp-*.yaml
 
 # Act (GitHub Actions local testing)
 .secrets
+.actrc
+
+# UV lock files (environment specific)
+uv.lock
+
+# Cache directories
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.trunk/
