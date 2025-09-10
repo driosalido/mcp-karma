@@ -77,3 +77,6 @@ uv.lock
 .pytest_cache/
 .ruff_cache/
 .trunk/
+
+# Alternative task runners (keep Makefile as primary for now)
+# justfile
