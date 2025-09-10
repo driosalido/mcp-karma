@@ -39,16 +39,15 @@ Claude: [Performs multi-cluster search and provides memory optimization tips]
 - ✅ **Detailed alert inspection** with annotations, labels, and runbook links
 - ✅ **Statistical summaries** showing alert distribution and trends
 
-### Advanced Search Capabilities
-- 🔍 **Container-based search** - Find alerts by container name across clusters
-- 🔍 **Alert name search** - Search specific alerts across your entire infrastructure  
+### Advanced Capabilities
+- 🔍 **Alert name search** - Search specific alerts by pattern matching
+- 🔍 **State filtering** - Filter by active, suppressed, or all states
 - 🔍 **Cross-cluster analysis** - Compare alert patterns between environments
 
 ### Integration Features
-- 🌐 **REST API** for HTTP-based integrations
 - 🔄 **MCP Protocol** support for AI assistants
 - 🐳 **Docker support** with multi-architecture images
-- ☸️ **Kubernetes-ready** with Helm charts included
+- ☸️ **Kubernetes-ready** deployment
 
 ## 📦 Installation
 
@@ -109,15 +108,15 @@ docker build -f docker/Dockerfile -t karma-mcp .
 docker run -d -e KARMA_URL=http://karma:8080 karma-mcp
 ```
 
-### Kubernetes Installation
+### Kubernetes Deployment
 
 ```bash
-# Using Helm
-helm install karma-mcp ./helm/karma-mcp \
-  --set config.karmaUrl=http://karma.monitoring:80
+# Deploy using Docker image
+kubectl create deployment karma-mcp \
+  --image=driosalido/karma-mcp:latest
 
-# Or with kubectl
-kubectl apply -f helm/karma-mcp/templates/
+kubectl set env deployment/karma-mcp \
+  KARMA_URL=http://karma.monitoring:80
 ```
 
 ## 🛠️ Available MCP Tools
@@ -132,34 +131,22 @@ The following tools are available for Claude to use:
 | `get_alert_details` | Detailed info about specific alert | "Details about KubePodCrashLooping" |
 | `list_clusters` | List all K8s clusters with counts | "Which clusters have alerts?" |
 | `list_alerts_by_cluster` | Filter by cluster | "Show teddy-prod alerts" |
-| `search_alerts_by_container` | Search by container name | "Find nginx container alerts" |
-| `get_alert_details_multi_cluster` | Search alert across clusters | "Find OOMKilled in all clusters" |
 | `list_active_alerts` | Show only active alerts | "What's currently firing?" |
 | `list_suppressed_alerts` | Show silenced/inhibited | "What alerts are suppressed?" |
-| `list_silences` | List active silences | "Show all silences in teddy-prod" |
-| `create_silence` | Create alert silence | "Silence KubePodCrashLooping for 2h" |
-| `delete_silence` | Delete/expire silence | "Remove silence abc123" |
+| `get_alerts_by_state` | Filter by state (active/suppressed/all) | "Show all suppressed alerts" |
+| `search_alerts` | Search alerts by name pattern | "Find all OOM alerts" |
+| `silence_alert` | Create alert silence | "Silence KubePodCrashLooping for 2h" |
 
-## 🔌 REST API Endpoints
+## 🔌 API Integration
 
-If you prefer HTTP integration:
+The server runs as an MCP server using stdio protocol for communication with Claude Desktop. For programmatic access, you can call the MCP tools directly from your Python code:
 
-```bash
-# Start HTTP server
-uv run python -m karma_mcp.http_server
+```python
+from karma_mcp.server import list_alerts, get_alerts_summary
 
-# Available endpoints
-GET  http://localhost:8000/health
-GET  http://localhost:8000/alerts
-GET  http://localhost:8000/alerts/summary
-GET  http://localhost:8000/clusters
-POST http://localhost:8000/alerts/by-cluster
-POST http://localhost:8000/alerts/details
-POST http://localhost:8000/alerts/search/container
-POST http://localhost:8000/alerts/search/name
-GET  http://localhost:8000/silences
-POST http://localhost:8000/silences
-DELETE http://localhost:8000/silences
+# Example usage
+alerts = await list_alerts()
+summary = await get_alerts_summary()
 ```
 
 ## 🧪 Testing
@@ -174,8 +161,12 @@ uv run pytest --cov=karma_mcp tests/
 # Run integration tests (requires Karma instance)
 KARMA_URL=http://localhost:8080 uv run pytest tests/integration/
 
-# Manual testing
-uv run python tests/manual/test_mcp_tools.py
+# Manual testing with real Karma server
+KARMA_URL=http://localhost:8080 uv run python -c "
+import asyncio
+from karma_mcp.server import list_alerts, get_alerts_summary
+asyncio.run(list_alerts())
+"
 ```
 
 ## 🔧 Development
@@ -204,14 +195,15 @@ uv run bandit -r src/
 ```
 karma-mcp/
 ├── src/karma_mcp/
-│   ├── server.py          # Main MCP server with all tools
-│   └── http_server.py     # REST API wrapper
+│   └── server.py         # Main MCP server with all tools
 ├── tests/
 │   ├── unit/             # Unit tests
 │   ├── integration/      # Integration tests
 │   └── fixtures/         # Test data
-├── docker/               # Docker configurations
-├── helm/                 # Kubernetes Helm charts
+├── docker/
+│   └── Dockerfile        # Docker configuration
+├── pyproject.toml        # Project dependencies
+├── uv.lock              # Locked dependencies
 └── .github/workflows/    # CI/CD pipelines
 ```
 
@@ -237,11 +229,11 @@ karma-mcp/
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
 Areas we'd love help with:
-- 🔕 Alert silencing/acknowledgment features
 - 📈 Historical trending and analytics
 - 🔐 Authentication support for secured Karma instances
 - 🌍 Additional language support for alert descriptions
 - 📱 Slack/Teams notification integrations
+- 🤖 AI-powered alert correlation and root cause analysis
 
 ## 📝 License
 
@@ -256,22 +248,30 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📚 Documentation
 
-- [Full API Documentation](docs/API.md)
-- [Configuration Guide](docs/CONFIGURATION.md)
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md)
-- [Example Queries](docs/EXAMPLES.md)
+- **Configuration**: Set `KARMA_URL` environment variable to your Karma instance
+- **Troubleshooting**: Check the [GitHub Issues](https://github.com/driosalido/karma-mcp/issues) for common problems
+- **Examples**: See the "Real-World Use Cases" section above for query examples
 
 ## 🚀 Roadmap
 
-- [x] Core alert querying and filtering
-- [x] Multi-cluster search capabilities
-- [x] Docker and Kubernetes support
-- [x] CI/CD with GitHub Actions
-- [ ] Alert silencing and acknowledgment
-- [ ] Historical data and trending
-- [ ] Grafana integration
-- [ ] Alert correlation and root cause analysis
-- [ ] Natural language alert rules generation
+### Completed ✅
+- Core alert querying and filtering
+- Multi-cluster support
+- State-based filtering (active/suppressed)
+- Docker containerization
+- CI/CD with GitHub Actions
+- Alert search by pattern
+- Alert silencing capability
+
+### In Progress 🔨
+- Alert acknowledgment
+- Silence management (list/delete)
+
+### Future Plans 💭
+- Historical data and trending
+- Alert correlation analysis
+- Grafana integration
+- Authentication for secured Karma instances
 
 ---
 

@@ -48,12 +48,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"
 ENV KARMA_URL=""
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+# Health check disabled for stdio mode
+# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+#     CMD curl -f http://localhost:8080/health || exit 1
 
-# Expose port for HTTP server
-EXPOSE 8080
+# Port 8080 not needed for stdio MCP mode
+# EXPOSE 8080
 
-# Default command - run HTTP server (use MCP_MODE=stdio for stdio mode)
-CMD ["python", "-m", "karma_mcp.http_server"]
+# Default command - run MCP server in stdio mode
+CMD ["python", "-m", "karma_mcp.server"]
