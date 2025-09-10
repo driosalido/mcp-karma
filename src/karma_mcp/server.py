@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Import version info from package metadata
 try:
     from importlib.metadata import version
+
     __version__ = version("karma-mcp")
 except ImportError:
     __version__ = "unknown"
