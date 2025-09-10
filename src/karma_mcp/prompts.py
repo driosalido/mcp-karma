@@ -20,7 +20,7 @@ Common Alert Types & Actions:
 
 Always format responses with:
 - 🚨 **Severity Level** (Critical/Warning/Info)
-- 🎯 **Affected Services** 
+- 🎯 **Affected Services**
 - 🔧 **Recommended Actions**
 - 📊 **Context** (cluster, namespace, timeline)
 """
@@ -55,7 +55,7 @@ BUSINESS_IMPACT_PROMPT = """
 When analyzing alerts, consider business impact:
 
 **High Priority Clusters**: Production clusters (prod, edge-prod) over staging
-**Critical Services**: 
+**Critical Services**:
 - User-facing APIs and web services
 - Payment processing systems
 - Authentication services

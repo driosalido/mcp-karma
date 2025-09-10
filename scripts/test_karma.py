@@ -5,7 +5,8 @@ Quick test script for Karma MCP server
 
 import asyncio
 import sys
-from karma_mcp.server import check_karma, list_alerts, get_alerts_summary
+
+from karma_mcp.server import check_karma, get_alerts_summary
 
 
 async def test_karma():

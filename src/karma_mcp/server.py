@@ -8,11 +8,12 @@ import os
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
 from .prompts import (
     ALERT_ANALYSIS_PROMPT,
+    BUSINESS_IMPACT_PROMPT,
     INCIDENT_RESPONSE_PROMPT,
     KUBERNETES_CONTEXT_PROMPT,
-    BUSINESS_IMPACT_PROMPT,
 )
 
 logging.basicConfig(level=logging.INFO)
