@@ -12,11 +12,232 @@ from mcp.server.fastmcp import FastMCP
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import version info from package metadata
+try:
+    from importlib.metadata import version
+    __version__ = version("karma-mcp")
+except ImportError:
+    __version__ = "unknown"
+
 # Configuration from environment variables
 KARMA_URL = os.getenv("KARMA_URL", "http://localhost:8080")
 
 # Create FastMCP server
 mcp = FastMCP("karma-mcp")
+
+# Log server startup information
+logger.info(f"🚀 Starting Karma MCP Server v{__version__}")
+logger.info(f"🌐 Karma URL configured: {KARMA_URL}")
+
+
+# Utility functions to reduce code duplication
+async def create_karma_client():
+    """Create and configure HTTP client for Karma API calls"""
+    return httpx.AsyncClient()
+
+
+async def fetch_karma_alerts():
+    """Fetch alerts data from Karma API with common error handling"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{KARMA_URL}/alerts.json",
+                headers={"Content-Type": "application/json"},
+                json={},
+            )
+
+            if response.status_code != 200:
+                return None, f"Error fetching alerts: code {response.status_code}"
+
+            data = response.json()
+            grids = data.get("grids", [])
+
+            if not grids:
+                return None, "No active alerts"
+
+            return data, None
+
+    except Exception as e:
+        return None, f"Error connecting to Karma: {str(e)}"
+
+
+def extract_label_value(labels: list, name: str, default: str = "unknown") -> str:
+    """Extract a label value from a list of label objects"""
+    if not labels:
+        return default
+    for label in labels:
+        if label.get("name", "") == name:
+            return label.get("value", default)
+    return default
+
+
+def extract_alert_metadata(group, alert):
+    """Extract common alert metadata (alertname, severity, namespace, cluster)"""
+    group_labels = group.get("labels", [])
+    alert_labels = alert.get("labels", [])
+
+    alertname = extract_label_value(group_labels, "alertname", "Unknown")
+
+    # Severity can be in group or alert labels
+    severity = extract_label_value(group_labels, "severity")
+    if severity == "unknown":
+        severity = extract_label_value(alert_labels, "severity", "none")
+
+    namespace = extract_label_value(alert_labels, "namespace", "N/A")
+
+    # Extract cluster from alertmanager info
+    cluster = "unknown"
+    for am in alert.get("alertmanager", []):
+        if "cluster" in am:
+            cluster = am["cluster"]
+            break
+
+    return {
+        "alertname": alertname,
+        "severity": severity,
+        "namespace": namespace,
+        "cluster": cluster,
+        "state": alert.get("state", "unknown"),
+        "starts_at": alert.get("startsAt", ""),
+        "group_id": group.get("id", ""),
+        "receiver": alert.get("receiver", "unknown"),
+    }
+
+
+def format_alert_summary(alerts_data, include_clusters=False):
+    """Format alert data into a readable summary"""
+    total_alerts = 0
+    severity_counts = {"critical": 0, "warning": 0, "info": 0, "none": 0}
+    state_counts = {"active": 0, "suppressed": 0}
+    cluster_counts = {}
+
+    grids = alerts_data.get("grids", [])
+
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            alerts = group.get("alerts", [])
+            total_alerts += len(alerts)
+
+            for alert in alerts:
+                metadata = extract_alert_metadata(group, alert)
+
+                # Count by severity
+                severity = metadata["severity"]
+                if severity in severity_counts:
+                    severity_counts[severity] += 1
+
+                # Count by state
+                state = metadata["state"]
+                if state in state_counts:
+                    state_counts[state] += 1
+
+                # Count by cluster if needed
+                if include_clusters:
+                    cluster = metadata["cluster"]
+                    cluster_counts[cluster] = cluster_counts.get(cluster, 0) + 1
+
+    # Format summary matching the expected test format
+    summary = f"Total Alerts: {total_alerts}\n"
+
+    # Severity breakdown
+    summary += "\nBy Severity:\n"
+    for severity, count in severity_counts.items():
+        if count > 0:
+            summary += f"  {severity.capitalize()}: {count}\n"
+
+    summary += "\nBy State:\n"
+    for state, count in state_counts.items():
+        if count > 0:
+            summary += f"  {state.capitalize()}: {count}\n"
+
+    if include_clusters and cluster_counts:
+        summary += "\nBy Cluster:\n"
+        sorted_clusters = sorted(
+            cluster_counts.items(), key=lambda x: x[1], reverse=True
+        )
+        for cluster, count in sorted_clusters:
+            summary += f"  {cluster}: {count}\n"
+
+    return summary
+
+
+def filter_alerts_by_cluster(alerts_data, cluster_name):
+    """Filter alerts data to only include alerts from a specific cluster"""
+    filtered_grids = []
+
+    for grid in alerts_data.get("grids", []):
+        filtered_groups = []
+
+        for group in grid.get("alertGroups", []):
+            filtered_alerts = []
+
+            for alert in group.get("alerts", []):
+                # Check if alert belongs to specified cluster
+                for am in alert.get("alertmanager", []):
+                    if am.get("cluster", "").lower() == cluster_name.lower():
+                        filtered_alerts.append(alert)
+                        break
+
+            if filtered_alerts:
+                # Create a copy of the group with filtered alerts
+                filtered_group = group.copy()
+                filtered_group["alerts"] = filtered_alerts
+                filtered_group["totalAlerts"] = len(filtered_alerts)
+                filtered_groups.append(filtered_group)
+
+        if filtered_groups:
+            filtered_grid = grid.copy()
+            filtered_grid["alertGroups"] = filtered_groups
+            filtered_grids.append(filtered_grid)
+
+    # Return filtered data structure
+    filtered_data = alerts_data.copy()
+    filtered_data["grids"] = filtered_grids
+    return filtered_data
+
+
+def extract_cluster_info(alerts_data):
+    """Extract cluster information and alert counts from Karma data"""
+    clusters = {}
+    cluster_alert_counts = {}
+
+    # Get clusters from upstreams
+    upstreams = alerts_data.get("upstreams", {})
+    instances = upstreams.get("instances", [])
+
+    for instance in instances:
+        cluster_name = instance.get("cluster", "unknown")
+        cluster_uri = instance.get("publicURI", "N/A")
+        cluster_version = instance.get("version", "N/A")
+        cluster_error = instance.get("error", "")
+
+        clusters[cluster_name] = {
+            "uri": cluster_uri,
+            "version": cluster_version,
+            "status": "healthy" if not cluster_error else f"error: {cluster_error}",
+            "instance_name": instance.get("name", "N/A"),
+        }
+
+    # Count alerts per cluster
+    grids = alerts_data.get("grids", [])
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            for alert in group.get("alerts", []):
+                for am in alert.get("alertmanager", []):
+                    cluster = am.get("cluster", "unknown")
+                    cluster_alert_counts[cluster] = (
+                        cluster_alert_counts.get(cluster, 0) + 1
+                    )
+
+    return clusters, cluster_alert_counts
+
+
+def extract_annotations(alert):
+    """Extract annotations from alert object"""
+    annotations = {}
+    for annotation in alert.get("annotations", []):
+        annotations[annotation.get("name", "")] = annotation.get("value", "")
+    return annotations
 
 
 @mcp.tool()
@@ -36,241 +257,99 @@ async def check_karma() -> str:
 @mcp.tool()
 async def list_alerts() -> str:
     """List all active alerts in Karma"""
-    try:
-        async with httpx.AsyncClient() as client:
-            # Karma API endpoint for alerts - requires POST
-            response = await client.post(
-                f"{KARMA_URL}/alerts.json",
-                headers={"Content-Type": "application/json"},
-                json={},
-            )
+    data, error = await fetch_karma_alerts()
+    if error:
+        return error
 
-            if response.status_code == 200:
-                data = response.json()
+    # Process alerts using utility functions
+    total_alerts = 0
+    alert_text = ""
 
-                # Karma returns alerts grouped by grid/alertGroups
-                total_alerts = 0
-                alert_text = ""
+    grids = data.get("grids", [])
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            alerts = group.get("alerts", [])
+            total_alerts += len(alerts)
 
-                grids = data.get("grids", [])
-                if not grids:
-                    return "No active alerts"
+            for alert in alerts[:10]:  # Show max 10 alerts per group
+                metadata = extract_alert_metadata(group, alert)
 
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        # Get group labels (contains alertname)
-                        group_labels_dict = {}
-                        for label in group.get("labels", []):
-                            group_labels_dict[label.get("name", "")] = label.get(
-                                "value", ""
-                            )
+                alert_text += f"• {metadata['alertname']}\n"
+                alert_text += f"  Severity: {metadata['severity']}\n"
+                alert_text += f"  State: {metadata['state']}\n"
+                alert_text += f"  Namespace: {metadata['namespace']}\n\n"
 
-                        alerts = group.get("alerts", [])
-                        total_alerts += len(alerts)
+    if total_alerts == 0:
+        return "No active alerts"
 
-                        for alert in alerts[:10]:  # Show max 10 alerts per group
-                            # Get alert-specific labels
-                            alert_labels_dict = {}
-                            for label in alert.get("labels", []):
-                                alert_labels_dict[label.get("name", "")] = label.get(
-                                    "value", ""
-                                )
-
-                            # alertname is in group labels, not alert labels
-                            alertname = group_labels_dict.get("alertname", "No name")
-                            severity = group_labels_dict.get(
-                                "severity", alert_labels_dict.get("severity", "unknown")
-                            )
-                            namespace = alert_labels_dict.get("namespace", "N/A")
-
-                            alert_text += f"• {alertname}\n"
-                            alert_text += f"  Severity: {severity}\n"
-                            alert_text += f"  State: {alert.get('state', 'unknown')}\n"
-                            alert_text += f"  Namespace: {namespace}\n\n"
-
-                if total_alerts == 0:
-                    return "No active alerts"
-
-                alert_text = f"Found {total_alerts} alerts:\n\n" + alert_text
-                return alert_text
-            else:
-                return f"Error fetching alerts: code {response.status_code}"
-
-    except Exception as e:
-        return f"Error connecting to Karma: {str(e)}"
+    alert_text = f"Found {total_alerts} alerts:\n\n" + alert_text
+    return alert_text
 
 
 @mcp.tool()
 async def get_alerts_summary() -> str:
     """Get a summary of alerts grouped by severity and state"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{KARMA_URL}/alerts.json",
-                headers={"Content-Type": "application/json"},
-                json={},
+    data, error = await fetch_karma_alerts()
+    if error:
+        return error
+
+    # Use the centralized summary function
+    summary = format_alert_summary(data, include_clusters=True)
+
+    # Add top alert types section
+    alert_type_counts = {}
+    grids = data.get("grids", [])
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            alertname = extract_label_value(
+                group.get("labels", []), "alertname", "Unknown"
+            )
+            alert_count = len(group.get("alerts", []))
+            alert_type_counts[alertname] = (
+                alert_type_counts.get(alertname, 0) + alert_count
             )
 
-            if response.status_code == 200:
-                data = response.json()
+    # Add top alert types to summary
+    if alert_type_counts:
+        summary += "\n🔝 Top Alert Types:\n"
+        top_alerts = sorted(
+            alert_type_counts.items(), key=lambda x: x[1], reverse=True
+        )[:10]
+        for alertname, count in top_alerts:
+            summary += f"  • {alertname}: {count}\n"
 
-                # Count alerts by severity and state
-                severity_counts = {}
-                state_counts = {"active": 0, "suppressed": 0}
-                alert_names = set()
-
-                grids = data.get("grids", [])
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        # Get group labels
-                        group_labels_dict = {}
-                        for label in group.get("labels", []):
-                            group_labels_dict[label.get("name", "")] = label.get(
-                                "value", ""
-                            )
-
-                        alertname = group_labels_dict.get("alertname", "unknown")
-                        severity = group_labels_dict.get("severity", "unknown")
-                        alert_names.add(alertname)
-
-                        alerts = group.get("alerts", [])
-                        for alert in alerts:
-                            state = alert.get("state", "unknown")
-
-                            # Count by severity
-                            if severity not in severity_counts:
-                                severity_counts[severity] = 0
-                            severity_counts[severity] += 1
-
-                            # Count by state
-                            if state in state_counts:
-                                state_counts[state] += 1
-
-                # Format summary
-                summary = "Karma Alert Summary\n"
-                summary += "=" * 50 + "\n\n"
-
-                total_alerts = sum(state_counts.values())
-                summary += f"Total Alerts: {total_alerts}\n"
-                summary += f"Unique Alert Types: {len(alert_names)}\n\n"
-
-                summary += "By State:\n"
-                for state, count in state_counts.items():
-                    percentage = (count / total_alerts * 100) if total_alerts > 0 else 0
-                    summary += f"  {state.capitalize()}: {count} ({percentage:.1f}%)\n"
-
-                summary += "\nBy Severity:\n"
-                for severity, count in sorted(
-                    severity_counts.items(), key=lambda x: x[1], reverse=True
-                ):
-                    percentage = (count / total_alerts * 100) if total_alerts > 0 else 0
-                    summary += (
-                        f"  {severity.capitalize()}: {count} ({percentage:.1f}%)\n"
-                    )
-
-                summary += "\nTop Alert Types:\n"
-                # Count alerts by type
-                alert_type_counts = {}
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        group_labels_dict = {}
-                        for label in group.get("labels", []):
-                            group_labels_dict[label.get("name", "")] = label.get(
-                                "value", ""
-                            )
-
-                        alertname = group_labels_dict.get("alertname", "unknown")
-                        alert_count = len(group.get("alerts", []))
-
-                        if alertname not in alert_type_counts:
-                            alert_type_counts[alertname] = 0
-                        alert_type_counts[alertname] += alert_count
-
-                # Show top 10 alert types
-                top_alerts = sorted(
-                    alert_type_counts.items(), key=lambda x: x[1], reverse=True
-                )[:10]
-                for alertname, count in top_alerts:
-                    summary += f"  {alertname}: {count}\n"
-
-                return summary
-            else:
-                return f"Error fetching alerts: code {response.status_code}"
-
-    except Exception as e:
-        return f"Error connecting to Karma: {str(e)}"
+    return summary
 
 
 @mcp.tool()
 async def list_clusters() -> str:
     """List all available Kubernetes clusters in Karma"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{KARMA_URL}/alerts.json",
-                headers={"Content-Type": "application/json"},
-                json={},
-            )
+    data, error = await fetch_karma_alerts()
+    if error:
+        return error
 
-            if response.status_code == 200:
-                data = response.json()
+    clusters, cluster_alert_counts = extract_cluster_info(data)
 
-                # Get clusters from upstreams
-                upstreams = data.get("upstreams", {})
-                instances = upstreams.get("instances", [])
+    # Format output
+    result = "🏢 Available Kubernetes Clusters\n"
+    result += "=" * 50 + "\n\n"
 
-                clusters = {}
-                for instance in instances:
-                    cluster_name = instance.get("cluster", "unknown")
-                    cluster_uri = instance.get("publicURI", "N/A")
-                    cluster_version = instance.get("version", "N/A")
-                    cluster_error = instance.get("error", "")
+    for cluster_name, info in sorted(clusters.items()):
+        alert_count = cluster_alert_counts.get(cluster_name, 0)
+        status_icon = "✅" if "healthy" in info["status"] else "❌"
 
-                    clusters[cluster_name] = {
-                        "uri": cluster_uri,
-                        "version": cluster_version,
-                        "status": "healthy"
-                        if not cluster_error
-                        else f"error: {cluster_error}",
-                        "instance_name": instance.get("name", "N/A"),
-                    }
+        result += f"📋 {cluster_name}\n"
+        result += f"   Instance: {info['instance_name']}\n"
+        result += f"   Status: {status_icon} {info['status']}\n"
+        result += f"   Alertmanager: {info['version']}\n"
+        result += f"   Active Alerts: {alert_count}\n"
+        result += f"   URI: {info['uri']}\n\n"
 
-                # Count alerts per cluster
-                cluster_alert_counts = {}
-                grids = data.get("grids", [])
+    result += "📊 Summary:\n"
+    result += f"   Total Clusters: {len(clusters)}\n"
+    result += f"   Total Alert Instances: {sum(cluster_alert_counts.values())}"
 
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        for alert in group.get("alerts", []):
-                            alertmanagers = alert.get("alertmanager", [])
-                            for am in alertmanagers:
-                                cluster = am.get("cluster", "unknown")
-                                if cluster not in cluster_alert_counts:
-                                    cluster_alert_counts[cluster] = 0
-                                cluster_alert_counts[cluster] += 1
-
-                # Format output
-                result = "Available Kubernetes Clusters\n"
-                result += "=" * 50 + "\n\n"
-
-                for cluster_name, info in sorted(clusters.items()):
-                    alert_count = cluster_alert_counts.get(cluster_name, 0)
-                    result += f"📋 {cluster_name}\n"
-                    result += f"   Instance: {info['instance_name']}\n"
-                    result += f"   Status: {info['status']}\n"
-                    result += f"   Alertmanager: {info['version']}\n"
-                    result += f"   Active Alerts: {alert_count}\n"
-                    result += f"   URI: {info['uri']}\n\n"
-
-                result += f"Total Clusters: {len(clusters)}\n"
-                result += f"Total Alert Instances: {sum(cluster_alert_counts.values())}"
-
-                return result
-            else:
-                return f"Error fetching clusters: code {response.status_code}"
-
-    except Exception as e:
-        return f"Error connecting to Karma: {str(e)}"
+    return result
 
 
 @mcp.tool()
@@ -280,92 +359,49 @@ async def list_alerts_by_cluster(cluster_name: str) -> str:
     Args:
         cluster_name: Name of the cluster to filter by (e.g., 'teddy-prod', 'edge-prod')
     """
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{KARMA_URL}/alerts.json",
-                headers={"Content-Type": "application/json"},
-                json={},
-            )
+    data, error = await fetch_karma_alerts()
+    if error:
+        return error
 
-            if response.status_code == 200:
-                data = response.json()
+    # Use utility function to filter by cluster
+    filtered_data = filter_alerts_by_cluster(data, cluster_name)
 
-                cluster_alerts = []
-                grids = data.get("grids", [])
+    # Count filtered alerts
+    total_alerts = 0
+    grids = filtered_data.get("grids", [])
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            total_alerts += len(group.get("alerts", []))
 
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        # Get group labels (contains alertname)
-                        group_labels_dict = {}
-                        for label in group.get("labels", []):
-                            group_labels_dict[label.get("name", "")] = label.get(
-                                "value", ""
-                            )
+    if total_alerts == 0:
+        return f"No alerts found for cluster: {cluster_name}"
 
-                        for alert in group.get("alerts", []):
-                            # Check if this alert belongs to the specified cluster
-                            alertmanagers = alert.get("alertmanager", [])
-                            for am in alertmanagers:
-                                if (
-                                    am.get("cluster", "").lower()
-                                    == cluster_name.lower()
-                                ):
-                                    # Get alert-specific labels
-                                    alert_labels_dict = {}
-                                    for label in alert.get("labels", []):
-                                        alert_labels_dict[label.get("name", "")] = (
-                                            label.get("value", "")
-                                        )
+    # Format output using utility functions
+    result = f"🏢 Alerts in cluster '{cluster_name}'\n"
+    result += "=" * 50 + "\n\n"
+    result += f"Found {total_alerts} alerts:\n\n"
 
-                                    cluster_alerts.append(
-                                        {
-                                            "alert": alert,
-                                            "group_labels": group_labels_dict,
-                                            "alert_labels": alert_labels_dict,
-                                            "alertmanager": am,
-                                        }
-                                    )
-                                    break  # Found in this cluster, no need to check other alertmanagers
+    counter = 1
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            for alert in group.get("alerts", []):
+                metadata = extract_alert_metadata(group, alert)
 
-                if not cluster_alerts:
-                    return f"No alerts found for cluster: {cluster_name}"
+                result += f"{counter:2d}. {metadata['alertname']}\n"
+                result += f"    Severity: {metadata['severity']}\n"
+                result += f"    State: {metadata['state']}\n"
+                result += f"    Namespace: {metadata['namespace']}\n"
+                result += f"    Cluster: {metadata['cluster']}\n"
 
-                # Format output
-                result = f"Alerts in cluster '{cluster_name}'\n"
-                result += "=" * 50 + "\n\n"
-                result += f"Found {len(cluster_alerts)} alerts:\n\n"
+                # Add instance if available
+                instance = extract_label_value(alert.get("labels", []), "instance")
+                if instance != "unknown":
+                    result += f"    Instance: {instance}\n"
 
-                for i, item in enumerate(cluster_alerts, 1):
-                    alert = item["alert"]
-                    group_labels = item["group_labels"]
-                    alert_labels = item["alert_labels"]
-                    am = item["alertmanager"]
+                result += "\n"
+                counter += 1
 
-                    alertname = group_labels.get("alertname", "No name")
-                    severity = group_labels.get(
-                        "severity", alert_labels.get("severity", "unknown")
-                    )
-                    namespace = alert_labels.get("namespace", "N/A")
-                    state = alert.get("state", "unknown")
-
-                    result += f"{i:2d}. {alertname}\n"
-                    result += f"    Severity: {severity}\n"
-                    result += f"    State: {state}\n"
-                    result += f"    Namespace: {namespace}\n"
-                    result += f"    Cluster: {am.get('cluster', 'N/A')}\n"
-
-                    if "instance" in alert_labels:
-                        result += f"    Instance: {alert_labels['instance']}\n"
-
-                    result += "\n"
-
-                return result
-            else:
-                return f"Error fetching alerts: code {response.status_code}"
-
-    except Exception as e:
-        return f"Error connecting to Karma: {str(e)}"
+    return result
 
 
 @mcp.tool()
@@ -375,100 +411,59 @@ async def get_alert_details(alert_name: str) -> str:
     Args:
         alert_name: Name of the alert to get details for
     """
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{KARMA_URL}/alerts.json",
-                headers={"Content-Type": "application/json"},
-                json={},
-            )
+    data, error = await fetch_karma_alerts()
+    if error:
+        return error
 
-            if response.status_code == 200:
-                data = response.json()
+    # Find matching alerts
+    matching_alerts = []
+    grids = data.get("grids", [])
 
-                # Find matching alerts across all grids and groups
-                matching_alerts = []
-                grids = data.get("grids", [])
+    for grid in grids:
+        for group in grid.get("alertGroups", []):
+            alertname = extract_label_value(group.get("labels", []), "alertname")
 
-                for grid in grids:
-                    for group in grid.get("alertGroups", []):
-                        # Get group labels (contains alertname)
-                        group_labels_dict = {}
-                        for label in group.get("labels", []):
-                            group_labels_dict[label.get("name", "")] = label.get(
-                                "value", ""
-                            )
+            if alertname.lower() == alert_name.lower():
+                for alert in group.get("alerts", []):
+                    matching_alerts.append({"alert": alert, "group": group})
 
-                        # Check if this group matches the alert name
-                        if (
-                            group_labels_dict.get("alertname", "").lower()
-                            == alert_name.lower()
-                        ):
-                            for alert in group.get("alerts", []):
-                                # Convert alert labels array to dictionary
-                                alert_labels_dict = {}
-                                for label in alert.get("labels", []):
-                                    alert_labels_dict[label.get("name", "")] = (
-                                        label.get("value", "")
-                                    )
+    if not matching_alerts:
+        return f"No alert found with name: {alert_name}"
 
-                                matching_alerts.append(
-                                    {
-                                        "alert": alert,
-                                        "group_labels": group_labels_dict,
-                                        "alert_labels": alert_labels_dict,
-                                    }
-                                )
+    # Format alert details
+    details = f"🔍 Found {len(matching_alerts)} instance(s) of {alert_name}:\n\n"
 
-                if not matching_alerts:
-                    return f"No alert found with name: {alert_name}"
+    for i, item in enumerate(matching_alerts, 1):
+        alert = item["alert"]
+        group = item["group"]
 
-                # Format alert details
-                details = (
-                    f"Found {len(matching_alerts)} instance(s) of {alert_name}:\n\n"
-                )
+        metadata = extract_alert_metadata(group, alert)
+        annotations = extract_annotations(alert)
 
-                for i, item in enumerate(matching_alerts, 1):
-                    alert = item["alert"]
-                    group_labels = item["group_labels"]
-                    alert_labels = item["alert_labels"]
+        details += f"📋 Instance {i}:\n"
+        details += f"  State: {metadata['state']}\n"
+        details += f"  Severity: {metadata['severity']}\n"
+        details += f"  Namespace: {metadata['namespace']}\n"
+        details += f"  Cluster: {metadata['cluster']}\n"
 
-                    # Convert annotations array to dictionary
-                    annotations_dict = {}
-                    for annotation in alert.get("annotations", []):
-                        annotations_dict[annotation.get("name", "")] = annotation.get(
-                            "value", ""
-                        )
+        # Add instance if available
+        instance = extract_label_value(alert.get("labels", []), "instance")
+        if instance != "unknown":
+            details += f"  Instance: {instance}\n"
 
-                    details += f"Instance {i}:\n"
-                    details += f"  State: {alert.get('state', 'unknown')}\n"
-                    details += (
-                        f"  Severity: {group_labels.get('severity', 'unknown')}\n"
-                    )
+        # Add annotations
+        if "description" in annotations:
+            description = annotations["description"]
+            if len(description) > 200:
+                description = description[:200] + "..."
+            details += f"  Description: {description}\n"
 
-                    if "instance" in alert_labels:
-                        details += f"  Instance: {alert_labels['instance']}\n"
+        if "summary" in annotations:
+            details += f"  Summary: {annotations['summary']}\n"
 
-                    if "namespace" in alert_labels:
-                        details += f"  Namespace: {alert_labels['namespace']}\n"
+        details += "\n"
 
-                    if "description" in annotations_dict:
-                        description = annotations_dict["description"]
-                        if len(description) > 200:
-                            description = description[:200] + "..."
-                        details += f"  Description: {description}\n"
-
-                    if "summary" in annotations_dict:
-                        details += f"  Summary: {annotations_dict['summary']}\n"
-
-                    details += "\n"
-
-                return details
-            else:
-                return f"Error fetching alerts: code {response.status_code}"
-
-    except Exception as e:
-        return f"Error connecting to Karma: {str(e)}"
+    return details
 
 
 @mcp.tool()
