@@ -106,19 +106,46 @@ def extract_label_value(labels: list, name: str, default: str = "unknown") -> st
     return default
 
 
+def labels_list_to_dict(labels: list) -> dict:
+    """Convert a list of {name, value} label objects to a flat dict"""
+    result = {}
+    if labels:
+        for label in labels:
+            name = label.get("name", "")
+            if name:
+                result[name] = label.get("value", "")
+    return result
+
+
+def resolve_severity(
+    group_labels_dict: dict, alert_labels_dict: dict, default: str = "none"
+) -> str:
+    """Resolve severity by checking group labels first, then alert labels.
+
+    Severity can appear at either the group or alert level depending on
+    how Karma groups alerts. This helper ensures we always check both.
+    """
+    severity = group_labels_dict.get("severity") or alert_labels_dict.get("severity")
+    return severity if severity else default
+
+
 def extract_alert_metadata(group, alert):
     """Extract common alert metadata (alertname, severity, namespace, cluster)"""
     group_labels = group.get("labels", [])
     alert_labels = alert.get("labels", [])
 
-    alertname = extract_label_value(group_labels, "alertname", "Unknown")
+    group_labels_dict = labels_list_to_dict(group_labels)
+    alert_labels_dict = labels_list_to_dict(alert_labels)
 
-    # Severity can be in group or alert labels
-    severity = extract_label_value(group_labels, "severity")
-    if severity == "unknown":
-        severity = extract_label_value(alert_labels, "severity", "none")
+    alertname = group_labels_dict.get(
+        "alertname", extract_label_value(group_labels, "alertname", "Unknown")
+    )
 
-    namespace = extract_label_value(alert_labels, "namespace", "N/A")
+    severity = resolve_severity(group_labels_dict, alert_labels_dict)
+
+    namespace = alert_labels_dict.get(
+        "namespace", group_labels_dict.get("namespace", "N/A")
+    )
 
     # Extract cluster from alertmanager info
     cluster = "unknown"
@@ -545,8 +572,8 @@ async def list_active_alerts() -> str:
                                     {
                                         "name": alertname,
                                         "state": alert_state,
-                                        "severity": group_labels_dict.get(
-                                            "severity", "unknown"
+                                        "severity": resolve_severity(
+                                            group_labels_dict, alert_labels_dict
                                         ),
                                         "namespace": alert_labels_dict.get(
                                             "namespace", "N/A"
@@ -639,8 +666,8 @@ async def list_suppressed_alerts() -> str:
                                     {
                                         "name": alertname,
                                         "state": alert_state,
-                                        "severity": group_labels_dict.get(
-                                            "severity", "unknown"
+                                        "severity": resolve_severity(
+                                            group_labels_dict, alert_labels_dict
                                         ),
                                         "namespace": alert_labels_dict.get(
                                             "namespace", "N/A"
@@ -792,8 +819,8 @@ async def get_alert_details_multi_cluster(
                                             ),
                                             "cluster": cluster,
                                             "state": alert.get("state", "unknown"),
-                                            "severity": group_labels_dict.get(
-                                                "severity", "unknown"
+                                            "severity": resolve_severity(
+                                                group_labels_dict, alert_labels_dict
                                             ),
                                             "namespace": alert_labels_dict.get(
                                                 "namespace", "N/A"
@@ -1008,8 +1035,8 @@ async def search_alerts_by_container(
                                             "container": alert_container,
                                             "cluster": cluster,
                                             "state": alert.get("state", "unknown"),
-                                            "severity": group_labels_dict.get(
-                                                "severity", "unknown"
+                                            "severity": resolve_severity(
+                                                group_labels_dict, alert_labels_dict
                                             ),
                                             "namespace": alert_labels_dict.get(
                                                 "namespace", "N/A"

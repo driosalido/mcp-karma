@@ -9,17 +9,140 @@ import pytest
 
 from karma_mcp.server import (
     check_karma,
+    extract_alert_metadata,
     get_alert_details,
     get_alert_details_multi_cluster,
     get_alerts_by_state,
     get_alerts_summary,
+    labels_list_to_dict,
     list_active_alerts,
     list_alerts,
     list_alerts_by_cluster,
     list_clusters,
     list_suppressed_alerts,
+    resolve_severity,
     search_alerts_by_container,
 )
+
+
+class TestSeverityExtraction:
+    """Test suite for severity label extraction from both group and alert labels"""
+
+    def test_labels_list_to_dict(self):
+        """Test converting label list to dict"""
+        labels = [
+            {"name": "severity", "value": "critical"},
+            {"name": "namespace", "value": "default"},
+        ]
+        result = labels_list_to_dict(labels)
+        assert result == {"severity": "critical", "namespace": "default"}
+
+    def test_labels_list_to_dict_empty(self):
+        """Test converting empty label list"""
+        assert labels_list_to_dict([]) == {}
+        assert labels_list_to_dict(None) == {}
+
+    def test_resolve_severity_from_group_labels(self):
+        """Test severity found in group labels"""
+        group = {"severity": "critical"}
+        alert = {"namespace": "default"}
+        assert resolve_severity(group, alert) == "critical"
+
+    def test_resolve_severity_from_alert_labels(self):
+        """Test severity found only in alert labels (not in group)"""
+        group = {"alertname": "KubePodCrashLooping"}
+        alert = {"severity": "critical", "namespace": "default"}
+        assert resolve_severity(group, alert) == "critical"
+
+    def test_resolve_severity_missing_from_both(self):
+        """Test severity missing from both group and alert labels"""
+        group = {"alertname": "TestAlert"}
+        alert = {"namespace": "default"}
+        assert resolve_severity(group, alert) == "none"
+
+    def test_resolve_severity_group_takes_precedence(self):
+        """Test group severity takes precedence over alert severity"""
+        group = {"severity": "warning"}
+        alert = {"severity": "critical"}
+        assert resolve_severity(group, alert) == "warning"
+
+    def test_extract_alert_metadata_severity_at_group_level(self):
+        """Test metadata extraction when severity is at group level"""
+        group = {
+            "labels": [
+                {"name": "alertname", "value": "KubePodCrashLooping"},
+                {"name": "severity", "value": "critical"},
+            ],
+        }
+        alert = {
+            "labels": [
+                {"name": "namespace", "value": "production"},
+            ],
+            "state": "active",
+            "alertmanager": [{"cluster": "prod", "name": "am1"}],
+        }
+        metadata = extract_alert_metadata(group, alert)
+        assert metadata["severity"] == "critical"
+
+    def test_extract_alert_metadata_severity_at_alert_level(self):
+        """Test metadata extraction when severity is only at alert level"""
+        group = {
+            "labels": [
+                {"name": "alertname", "value": "KubePodCrashLooping"},
+            ],
+        }
+        alert = {
+            "labels": [
+                {"name": "severity", "value": "critical"},
+                {"name": "namespace", "value": "argocd-edge"},
+            ],
+            "state": "active",
+            "alertmanager": [{"cluster": "infratest-dev", "name": "am1"}],
+        }
+        metadata = extract_alert_metadata(group, alert)
+        assert metadata["severity"] == "critical"
+        assert metadata["namespace"] == "argocd-edge"
+        assert metadata["cluster"] == "infratest-dev"
+
+    @pytest.mark.asyncio
+    async def test_list_active_alerts_severity_at_alert_level(self, env_setup):
+        """Test list_active_alerts correctly shows severity from alert labels"""
+        from tests.fixtures.karma_data import SAMPLE_KARMA_RESPONSE_SEVERITY_ON_ALERT
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = SAMPLE_KARMA_RESPONSE_SEVERITY_ON_ALERT
+            mock_client.post.return_value = mock_response
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            result = await list_active_alerts()
+
+            assert "KubePodCrashLooping" in result
+            assert "critical" in result.lower()
+            # Must NOT show "unknown" or "none" for severity
+            assert "Severity: unknown" not in result
+            assert "Severity: none" not in result
+
+    @pytest.mark.asyncio
+    async def test_list_alerts_by_cluster_severity_at_alert_level(self, env_setup):
+        """Test list_alerts_by_cluster correctly shows severity from alert labels"""
+        from tests.fixtures.karma_data import SAMPLE_KARMA_RESPONSE_SEVERITY_ON_ALERT
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = SAMPLE_KARMA_RESPONSE_SEVERITY_ON_ALERT
+            mock_client.post.return_value = mock_response
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+
+            result = await list_alerts_by_cluster("infratest-dev")
+
+            assert "KubePodCrashLooping" in result
+            assert "critical" in result.lower()
+            assert "Severity: none" not in result
 
 
 class TestCheckKarma:

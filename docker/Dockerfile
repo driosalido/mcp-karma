@@ -55,5 +55,5 @@ ENV KARMA_URL=""
 # Port 8080 not needed for stdio MCP mode
 # EXPOSE 8080
 
-# Default command - run MCP server in stdio mode
-CMD ["python", "-m", "karma_mcp.server"]
+# Default command - run HTTP server for ingress/SSE access
+CMD ["python", "-m", "karma_mcp.http_server"]

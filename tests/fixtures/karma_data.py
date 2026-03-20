@@ -140,6 +140,82 @@ SAMPLE_KARMA_RESPONSE = {
     "receivers": ["web.hook"],
 }
 
+# Sample response where severity is at alert level, not group level.
+# This happens when Karma groups alerts by alertname only and severity
+# differs across instances or is not part of the grouping key.
+SAMPLE_KARMA_RESPONSE_SEVERITY_ON_ALERT = {
+    "status": "success",
+    "timestamp": "2025-09-04T10:00:00Z",
+    "version": "v0.120",
+    "upstreams": {
+        "counters": {"healthy": 1, "failed": 0},
+        "instances": [
+            {
+                "name": "alertmanager",
+                "cluster": "infratest-dev",
+                "publicURI": "http://alertmanager.monitoring.svc.cluster.local",
+                "version": "0.25.0",
+                "error": "",
+            }
+        ],
+    },
+    "grids": [
+        {
+            "labelName": "",
+            "labelValue": "",
+            "alertGroups": [
+                {
+                    "receiver": "web.hook",
+                    "labels": [
+                        {"name": "alertname", "value": "KubePodCrashLooping"},
+                    ],
+                    "alerts": [
+                        {
+                            "annotations": [
+                                {
+                                    "name": "description",
+                                    "value": "Pod is crash looping",
+                                },
+                            ],
+                            "labels": [
+                                {"name": "severity", "value": "critical"},
+                                {"name": "instance", "value": "10.55.158.226:8080"},
+                                {"name": "namespace", "value": "argocd-edge"},
+                                {"name": "pod", "value": "app-pod-789"},
+                            ],
+                            "startsAt": "2025-09-04T09:30:00Z",
+                            "state": "active",
+                            "alertmanager": [
+                                {
+                                    "cluster": "infratest-dev",
+                                    "name": "alertmanager",
+                                    "state": "active",
+                                }
+                            ],
+                            "receiver": "web.hook",
+                            "id": "alert-4",
+                        },
+                    ],
+                    "id": "group-3",
+                    "alertmanagerCount": {"active": 1},
+                    "stateCount": {"active": 1},
+                    "totalAlerts": 1,
+                },
+            ],
+            "totalGroups": 1,
+            "stateCount": {"active": 1},
+        }
+    ],
+    "totalAlerts": 1,
+    "labelNames": ["alertname", "severity", "instance", "namespace"],
+    "colors": {},
+    "filters": [],
+    "silences": [],
+    "settings": {},
+    "authentication": {},
+    "receivers": ["web.hook"],
+}
+
 # Sample empty response
 EMPTY_KARMA_RESPONSE = {
     "status": "success",
